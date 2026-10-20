@@ -1,7 +1,7 @@
 // Full-screen dashboard opened from the popup ("Open web page").
 // Shows football, F1 and GT3 side by side, with standings and inline YouTube highlights.
 import { fetchFootballRange, fetchF1, fetchGT, fetchStandings, fetchF1Standings, searchYouTube, clearCache, isoDay, ymd } from './src/api.js';
-import { FOOT_LEAGUES, GT_LEAGUES, loadSettings, saveSettings, isFavTeam } from './src/config.js';
+import { FOOT_LEAGUES, GT_LEAGUES, PLAYER_RELAY, loadSettings, saveSettings, isFavTeam } from './src/config.js';
 import { t, setLang, lang, localName, applyI18n } from './src/i18n.js';
 import { ensureEmbedReferer, openPopout } from './src/embed.js';
 import {
@@ -457,7 +457,8 @@ async function openStandings(id, name) {
 }
 
 function playerHtml(v) {
-  const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(v.id)}?autoplay=1&rel=0&modestbranding=1`;
+  // Played through the https relay page (see PLAYER_RELAY in src/config.js).
+  const src = `${PLAYER_RELAY}?v=${encodeURIComponent(v.id)}`;
   return `<div class="player"><iframe src="${esc(src)}" title="${esc(v.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
 }
 

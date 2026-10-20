@@ -20,6 +20,11 @@ export const FOOT_LEAGUES = [
   { id: 'usa.1', name: 'MLS', en: 'MLS', on: false },
 ];
 
+// https page that hosts the YouTube player (docs/player.html, published with GitHub Pages).
+// YouTube refuses embeds inside chrome-extension:// pages (error 153), so the extension
+// embeds this relay instead. Change it if you fork the repository.
+export const PLAYER_RELAY = 'https://dyslate.github.io/result_of_sports/player.html';
+
 // GT3 championships tracked through TheSportsDB (calendar only).
 export const GT_LEAGUES = [
   { id: '4439', name: 'GT World Challenge Europe – Endurance', on: true },
