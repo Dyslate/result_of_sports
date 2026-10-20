@@ -468,7 +468,7 @@ async function openStandings(id, name) {
 function playerHtml(v) {
   // Played through the https relay page (see PLAYER_RELAY in src/config.js).
   const src = `${PLAYER_RELAY}?v=${encodeURIComponent(v.id)}`;
-  return `<div class="player"><iframe src="${esc(src)}" title="${esc(v.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
+  return `<div class="player"><iframe src="${esc(src)}" title="${esc(v.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
 }
 
 // Messages from the relay page (docs/player.html): 'loaded', then 'ready' or 'error'.

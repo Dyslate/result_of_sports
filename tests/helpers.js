@@ -47,8 +47,18 @@ export async function launch({ lang = 'fr', mode = 'ok', settings = null } = {})
     await p.close();
   }
 
+  // Uncaught errors and console warnings / errors (Chrome lists those under the extension's
+  // "Errors" button) all fail the tests. Messages from the fake YouTube pages are ignored.
   const watch = (p) => {
     p.on('pageerror', (e) => errors.push(`${p.url().split('/').pop()}: ${e.message}`));
+    p.on('console', (m) => {
+      if (m.type() !== 'error' && m.type() !== 'warning') return;
+      const where = m.location().url ?? '';
+      if (/youtube(-nocookie)?\.com/.test(where)) return;
+      // Chrome logs every failed request itself; expected only in the failure scenarios.
+      if (state.mode !== 'ok' && m.text().startsWith('Failed to load resource')) return;
+      errors.push(`[console.${m.type()}] ${m.text()} @ ${where.split('/').pop()}:${(m.location().lineNumber ?? 0) + 1}`);
+    });
     return p;
   };
 
