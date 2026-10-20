@@ -51,6 +51,20 @@ export const CUSTOM_PRESETS = [
   { name: 'Glacier', en: 'Glacier', bg: '#e9f1f7', surface: '#ffffff', text: '#0e2236', accent: '#0077c8', live: '#e5383b' },
 ];
 
+// Automatic refresh, in minutes: while something is live / otherwise. 'off' = manual only.
+export const REFRESH = {
+  fast: { live: 1, idle: 10 },
+  normal: { live: 5, idle: 15 },
+  slow: { live: 15, idle: 60 },
+  off: null,
+};
+
+/** Minutes until the next automatic refresh, or null when refreshing is manual. */
+export function refreshMinutes(setting, live) {
+  const r = setting in REFRESH ? REFRESH[setting] : REFRESH.normal;
+  return r ? (live ? r.live : r.idle) : null;
+}
+
 export const DEFAULTS = {
   footLeagues: FOOT_LEAGUES.filter((l) => l.on).map((l) => l.id),
   gtLeagues: GT_LEAGUES.filter((l) => l.on).map((l) => l.id),
@@ -58,6 +72,7 @@ export const DEFAULTS = {
   favorites: [], // highlighted team names
   badge: true,
   notify: 'fav', // goal alerts: 'fav' | 'all' | 'off'
+  refresh: 'normal', // automatic refresh: 'fast' | 'normal' | 'slow' | 'off' (see REFRESH)
   lang: 'auto', // 'auto' | 'fr' | 'en'
   themeCfg: {
     mode: 'auto', // 'auto' | 'light' | 'dark'

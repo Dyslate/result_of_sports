@@ -89,10 +89,23 @@ test('background: badge shows live events, goal and full-time notifications fire
     const got = await ids();
     assert.ok(got.includes('goal-1001-3'), `goal notification (${got})`);
     assert.ok(got.includes('ft-1003'), `full-time notification (${got})`);
-    // polling adapts: something is live, so the next check is in about a minute
-    const alarm = await x.sw.evaluate(() => chrome.alarms.get('refresh'));
-    const inMin = (alarm.scheduledTime - Date.now()) / 60000;
-    assert.ok(inMin > 0 && inMin <= 1.1, `next check in ${inMin.toFixed(2)} min`);
+    // default pace: something is live, so the next check is in 5 minutes
+    const next = async () => {
+      const a = await x.sw.evaluate(() => chrome.alarms.get('refresh'));
+      return a ? (a.scheduledTime - Date.now()) / 60000 : null;
+    };
+    let m = await next();
+    assert.ok(m > 4 && m <= 5.1, `next check in ${m?.toFixed(2)} min`);
+    // "Fast" setting: every minute while live
+    await p.evaluate(() => chrome.storage.sync.set({ refresh: 'fast' }));
+    await p.evaluate(() => chrome.runtime.sendMessage({ type: 'refresh-badge' }));
+    for (let i = 0; i < 40 && (m = await next()) > 1.1; i++) await sleep(250);
+    assert.ok(m > 0 && m <= 1.1, `fast: next check in ${m?.toFixed(2)} min`);
+    // "Manual": no background check at all
+    await p.evaluate(() => chrome.storage.sync.set({ refresh: 'off' }));
+    await p.evaluate(() => chrome.runtime.sendMessage({ type: 'refresh-badge' }));
+    for (let i = 0; i < 40 && (m = await next()) != null; i++) await sleep(250);
+    assert.equal(m, null, 'manual: no alarm');
     // the YouTube referer rule is installed for the extension only
     const rules = await x.sw.evaluate(() => chrome.declarativeNetRequest.getDynamicRules());
     assert.deepEqual(rules[0].condition.initiatorDomains, [x.id]);

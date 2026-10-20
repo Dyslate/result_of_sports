@@ -183,3 +183,14 @@ test('"Open web page" opens the full-screen page in a new tab', async () => {
   await tab.waitForSelector('.kpi');
   await tab.close();
 });
+
+test('settings: automatic refresh choice is saved', async () => {
+  const p = await freshPopup();
+  await p.click('#settings-btn');
+  assert.equal(await p.getAttribute('#set-refresh [data-refresh="normal"]', 'aria-checked'), 'true', 'normal by default');
+  await p.click('#set-refresh [data-refresh="slow"]');
+  assert.equal(await p.evaluate(() => chrome.storage.sync.get('refresh').then((s) => s.refresh)), 'slow');
+  assert.match(await p.textContent('#settings'), /Actualisation automatique/);
+  await p.click('#set-refresh [data-refresh="normal"]');
+  await p.close();
+});

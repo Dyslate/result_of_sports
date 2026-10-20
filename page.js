@@ -1,7 +1,7 @@
 // Full-screen dashboard opened from the popup ("Open web page").
 // Shows football, F1 and GT3 side by side, with standings and inline YouTube highlights.
 import { fetchFootballRange, fetchF1, fetchGT, fetchStandings, fetchF1Standings, searchYouTube, clearCache, isoDay, ymd } from './src/api.js';
-import { FOOT_LEAGUES, GT_LEAGUES, PLAYER_RELAY, loadSettings, saveSettings, isFavTeam } from './src/config.js';
+import { FOOT_LEAGUES, GT_LEAGUES, PLAYER_RELAY, loadSettings, saveSettings, isFavTeam, refreshMinutes } from './src/config.js';
 import { t, setLang, lang, localName, applyI18n } from './src/i18n.js';
 import { ensureEmbedReferer, openPopout } from './src/embed.js';
 import {
@@ -442,7 +442,9 @@ async function refresh({ silent = false, footOnly = false } = {}) {
     (state.foot?.leagues ?? []).some((lg) => lg.events.some((e) => e.status.live)) ||
     !!state.f1?.current?.sessions.some((s) => s.state === 'in');
   clearTimeout(state.timer);
-  state.timer = setTimeout(() => refresh({ silent: true }), live ? 30000 : 300000);
+  // Same pace as the popup and background (Settings → Automatic refresh); none in manual mode.
+  const every = refreshMinutes(state.settings.refresh, live);
+  if (every != null) state.timer = setTimeout(() => refresh({ silent: true }), every * 60000);
 }
 
 /* ================================================================ dialogs */
@@ -510,15 +512,14 @@ function videoInfo(v, searchUrl) {
   </div>`;
 }
 
-/** Card shown instead of the player when every result is blocked outside YouTube. */
-function blockedCard(v, searchUrl, channels) {
+/** Shown in place of the player when the video's owner only allows playback on YouTube. */
+function blockedCard(v) {
   return `<div class="player blocked"><div class="blocked-in">
-    <strong>${esc(t('vid.allBlocked'))}</strong>
-    <p>${esc(t('vid.allBlockedSub', { who: channels.join(', ') }))}</p>
+    <strong>${esc(t('vid.blockedTitle'))}</strong>
+    <p>${esc(t('vid.blockedSub', { who: v.channel || 'YouTube' }))}</p>
     <div class="vid-actions center">
-      <button class="btn" data-popout="${esc(v.id)}">${esc(t('vid.popout'))}</button>
-      <a class="pill-btn yt" href="https://www.youtube.com/watch?v=${esc(encodeURIComponent(v.id))}" target="_blank" rel="noopener">${esc(t('vid.watchOn'))}</a>
-      <a class="pill-btn" href="${esc(searchUrl)}" target="_blank" rel="noopener">${esc(t('vid.search'))}</a>
+      <a class="btn" href="https://www.youtube.com/watch?v=${esc(encodeURIComponent(v.id))}" target="_blank" rel="noopener">${esc(t('vid.watchOn'))}</a>
+      <button class="pill-btn" data-popout="${esc(v.id)}">${esc(t('vid.popout'))}</button>
     </div>
   </div></div>`;
 }
@@ -533,7 +534,7 @@ async function openVideo(query, label) {
   let videos = [];
   try {
     // Make sure the Referer rule is in place before the player iframe loads (see src/embed.js).
-    [videos] = await Promise.all([searchYouTube(query, { max: 6, hl: lang() }), ensureEmbedReferer()]);
+    [videos] = await Promise.all([searchYouTube(query, { max: 5, hl: lang() }), ensureEmbedReferer()]);
   } catch {
     videos = null;
   }
@@ -545,9 +546,9 @@ async function openVideo(query, label) {
     return;
   }
 
-  const blocked = new Set(); // indexes of videos whose owner forbids playback here
+  const blocked = new Set(); // indexes of videos whose owner only allows playback on YouTube
   const bind = () => {
-    body.querySelectorAll('[data-vid]').forEach((b) => b.addEventListener('click', () => show(+b.dataset.vid, true)));
+    body.querySelectorAll('[data-vid]').forEach((b) => b.addEventListener('click', () => show(+b.dataset.vid)));
     body.querySelectorAll('[data-popout]').forEach((b) =>
       b.addEventListener('click', (e) => {
         openPopout(e.currentTarget.dataset.popout);
@@ -565,35 +566,25 @@ async function openVideo(query, label) {
             )}</small></span></button>`
       )
       .join('');
+  const others = (i) => {
+    const l = list(i);
+    return l ? `<h3 class="vid-h">${esc(t('vid.others'))}</h3><div class="vid-list">${l}</div>` : '';
+  };
 
-  const show = (i, chosen = false, note = '') => {
+  const show = (i) => {
     const v = videos[i];
-    const others = list(i);
-    body.innerHTML =
-      (note ? `<div class="vid-note">${esc(note)}</div>` : '') +
-      playerHtml(v) +
-      videoInfo(v, searchUrl) +
-      (others ? `<h3 class="vid-h">${esc(t('vid.others'))}</h3><div class="vid-list">${others}</div>` : '');
+    if (blocked.has(i)) {
+      stopRelayWatch();
+      body.innerHTML = blockedCard(v) + videoInfo(v, searchUrl) + others(i);
+      bind();
+      return;
+    }
+    body.innerHTML = playerHtml(v) + videoInfo(v, searchUrl) + others(i);
     bind();
+    // If the owner forbids playback here, swap the player for a one-click "Watch on YouTube".
     watchRelay(v, () => {
       blocked.add(i);
-      if (!$('#dlg-video').open) return;
-      // A video picked by hand stays on screen with YouTube's own message.
-      if (chosen) {
-        body.querySelector('.vid-list')?.replaceChildren();
-        body.querySelector('.vid-list')?.insertAdjacentHTML('beforeend', list(i));
-        bind();
-        return;
-      }
-      const next = videos.findIndex((_, j) => !blocked.has(j));
-      if (next >= 0) {
-        show(next, false, t('vid.skipped', { who: v.channel || 'YouTube' }));
-      } else {
-        stopRelayWatch();
-        const channels = [...new Set(videos.map((o) => o.channel).filter(Boolean))].slice(0, 3);
-        body.innerHTML = blockedCard(videos[0], searchUrl, channels.length ? channels : ['YouTube']);
-        bind();
-      }
+      if ($('#dlg-video').open) show(i);
     });
   };
   show(0);
@@ -697,7 +688,7 @@ async function init() {
         applyLanguage();
         paintAll();
       }
-      if (changes.footLeagues || changes.gtLeagues || changes.customGt) refresh({ silent: true });
+      if (changes.footLeagues || changes.gtLeagues || changes.customGt || changes.refresh) refresh({ silent: true });
       else if (changes.favorites) paintFoot();
     });
   } catch {

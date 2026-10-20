@@ -145,3 +145,14 @@ test('YouTube search: first videos parsed from the results page', async () => {
   assert.equal(v[0].channel, 'CANAL+ Sport');
   assert.equal(v[0].length, '14:42');
 });
+
+test('refresh pace: calm by default, configurable, manual = never', async () => {
+  const { refreshMinutes, DEFAULTS } = await import('../src/config.js');
+  assert.equal(DEFAULTS.refresh, 'normal');
+  assert.equal(refreshMinutes('normal', true), 5);
+  assert.equal(refreshMinutes('normal', false), 15);
+  assert.equal(refreshMinutes('fast', true), 1);
+  assert.equal(refreshMinutes('slow', false), 60);
+  assert.equal(refreshMinutes('off', true), null);
+  assert.equal(refreshMinutes(undefined, true), 5, 'unknown value falls back to normal');
+});

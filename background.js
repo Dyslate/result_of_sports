@@ -1,6 +1,6 @@
 // Service worker: "live" badge on the toolbar icon + goal notifications.
 import { fetchFootball, fetchF1, getCooldown } from './src/api.js';
-import { loadSettings, isFavTeam, FOOT_LEAGUES } from './src/config.js';
+import { loadSettings, isFavTeam, FOOT_LEAGUES, refreshMinutes } from './src/config.js';
 import { t, setLang, localName } from './src/i18n.js';
 import { ensureEmbedReferer } from './src/embed.js';
 
@@ -69,9 +69,10 @@ async function checkGoals(leagues, s) {
 }
 
 /**
- * Checks scores, updates the badge, then schedules the next check. Polling adapts to what is
- * happening: every minute while something is live, every 2 min just before a kick-off,
- * every 10 min otherwise, and not at all while ESPN is throttling us.
+ * Checks scores, updates the badge, then schedules the next check according to the
+ * "Automatic refresh" setting (src/config.js REFRESH): the "live" pace while a match or
+ * session is live or about to start, the "idle" pace otherwise, nothing when it's manual,
+ * and nothing while ESPN is throttling us.
  */
 async function tick() {
   const s = await loadSettings();
@@ -102,7 +103,12 @@ async function tick() {
   await chrome.action.setTitle({ title: live > 0 ? t('badge.title', { app: t('app.title'), n: live }) : t('app.title') });
 
   const blocked = await getCooldown();
-  const delay = blocked ? Math.max(1, (blocked - Date.now()) / 60000 + 0.5) : live ? 1 : soon ? 2 : 10;
+  const every = refreshMinutes(s.refresh, live > 0 || soon);
+  if (every == null) {
+    await chrome.alarms.clear(ALARM); // manual mode: only the refresh button updates things
+    return;
+  }
+  const delay = blocked ? Math.max(every, (blocked - Date.now()) / 60000 + 0.5) : every;
   chrome.alarms.create(ALARM, { delayInMinutes: delay });
 }
 
@@ -118,7 +124,7 @@ chrome.alarms.onAlarm.addListener((a) => {
 // Debounced: ticking several boxes in the settings must not fire a full refresh per click.
 let changeTimer;
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area !== 'sync' || !(changes.badge || changes.footLeagues || changes.lang)) return;
+  if (area !== 'sync' || !(changes.badge || changes.footLeagues || changes.lang || changes.refresh)) return;
   clearTimeout(changeTimer);
   changeTimer = setTimeout(tick, 4000);
 });

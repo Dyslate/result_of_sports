@@ -1,6 +1,6 @@
 // Popup UI: tabs (football / F1 / GT3), settings panel and standings panel.
 import { fetchFootball, fetchF1, fetchGT, fetchStandings, fetchF1Standings, clearCache } from './src/api.js';
-import { FOOT_LEAGUES, GT_LEAGUES, PALETTES, CUSTOM_PRESETS, loadSettings, saveSettings, isFavTeam } from './src/config.js';
+import { FOOT_LEAGUES, GT_LEAGUES, PALETTES, CUSTOM_PRESETS, loadSettings, saveSettings, isFavTeam, refreshMinutes } from './src/config.js';
 import { t, setLang, lang, localName, applyI18n } from './src/i18n.js';
 import {
   esc, norm, fmtTime, dayFromOffset, dayLabel, dayPhrase, emptyBox, skeleton, stamp, flag, THEME_ICONS,
@@ -32,9 +32,11 @@ const isFav = (team) => isFavTeam(team, state.settings.favorites);
 
 function scheduleRefresh(hasLive) {
   clearTimeout(state.timer);
-  // Every 30 s while something is live, otherwise every 5 min while the popup stays open.
-  state.timer = setTimeout(() => render(true), hasLive ? 30000 : 300000);
+  // Same pace as the background checks (Settings → Automatic refresh); none in manual mode.
+  const every = refreshMinutes(state.settings.refresh, hasLive);
+  if (every != null) state.timer = setTimeout(() => render(true), every * 60000);
 }
+
 
 function setTabCount(tab, n) {
   const btn = $(`.tab[data-tab="${tab}"]`);
@@ -360,6 +362,7 @@ function renderSettings() {
   $('#set-badge').checked = s.badge;
   $$('#set-notify [data-notify]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.notify === s.notify)));
   $$('#set-lang [data-lang]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.lang === (s.lang ?? 'auto'))));
+  $$('#set-refresh [data-refresh]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.refresh === (s.refresh ?? 'normal'))));
   renderThemeSettings();
 }
 
@@ -395,6 +398,12 @@ function bindSettings() {
     persist({ favorites: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })
   );
   $('#set-badge').addEventListener('change', (e) => persist({ badge: e.target.checked }));
+  $('#set-refresh').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-refresh]');
+    if (!b) return;
+    persist({ refresh: b.dataset.refresh });
+    $$('#set-refresh [data-refresh]').forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+  });
   $('#set-notify').addEventListener('click', (e) => {
     const b = e.target.closest('[data-notify]');
     if (!b) return;

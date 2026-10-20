@@ -401,6 +401,8 @@ input[type="text"]:focus { outline: 2px solid var(--accent); outline-offset: -1p
 
 /* ============ Theme editor ============ */
 .seg.five { grid-template-columns: repeat(5, 1fr); }
+.seg.four { grid-template-columns: repeat(4, 1fr); }
+.seg + .hint { margin-top: 8px; }
 .seg.five button { font-size: 14px; }
 .swatches { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 .swatch {

@@ -56,7 +56,7 @@ Available in **English** and **French** (follows Chrome's language, or switch wi
 - Add a match or a Grand Prix to Google Calendar
 - **Notifications** for kick-off, goals and full time (favourites only, all matches, or off)
 - **Badge** on the toolbar icon with the number of live events
-- Auto-refresh every 30 s while something is live
+- **Automatic refresh** you choose in the settings: Fast (every minute while a match is live, 10 min otherwise), Normal (5 / 15 min, default), Slow (15 / 60 min) or Manual (refresh button only)
 
 ## Themes
 
@@ -105,13 +105,13 @@ None of these require an API key, but they are not officially documented and may
 
 To stay polite with these APIs, responses are cached in `chrome.storage.session`, shared by the popup, the page and the background worker (cleared when the browser closes): 30 s when the period includes today, 6 h for past days, 15 min for future fixtures, 10 min for tables, 1 h for the GT3 calendar and video searches. Requests are limited to 4 at a time and retried on errors; the refresh button bypasses the cache.
 
-If ESPN answers 403 or 429 (it throttles an IP that sends too many requests), the extension stops calling it for 2 minutes, then 4, 8, 16 and 30 minutes if the block persists, shows when it will try again, and serves cached data meanwhile. Background polling also adapts: every minute while something is live, every 2 minutes just before a kick-off, every 10 minutes otherwise. No free source publishes live GT3 race results, so the GT3 section is limited to the calendar.
+If ESPN answers 403 or 429 (it throttles an IP that sends too many requests), the extension stops calling it for 2 minutes, then 4, 8, 16 and 30 minutes if the block persists, shows when it will try again, and serves cached data meanwhile. Background checks follow the Automatic refresh setting (5 minutes while a match is live and 15 minutes otherwise by default). No free source publishes live GT3 race results, so the GT3 section is limited to the calendar.
 
-Inline highlights rely on YouTube embeds. YouTube refuses to play inside pages that aren't a regular http(s) website (error 153), and extension pages are `chrome-extension://`. The extension therefore embeds a tiny relay page, [`docs/player.html`](docs/player.html), published with GitHub Pages at `https://dyslate.github.io/result_of_sports/player.html`, which embeds the player itself. If you fork the project, enable GitHub Pages on the `docs/` folder and update `PLAYER_RELAY` in `src/config.js`. Some broadcasters (beIN SPORTS, for instance) only allow their highlights to be played on YouTube itself. The relay listens to the player and reports those videos, so the page automatically moves on to the next result; when every result is YouTube-only, it offers **Pop-out** (small Chrome window) and **Watch on YouTube** instead. The extension does not try to get around these restrictions. If you have never accepted YouTube's cookie banner in Chrome, the search may be blocked by the consent page; open youtube.com once to accept it.
+Inline highlights rely on YouTube embeds. YouTube refuses to play inside pages that aren't a regular http(s) website (error 153), and extension pages are `chrome-extension://`. The extension therefore embeds a tiny relay page, [`docs/player.html`](docs/player.html), published with GitHub Pages at `https://dyslate.github.io/result_of_sports/player.html`, which embeds the player itself. If you fork the project, enable GitHub Pages on the `docs/` folder and update `PLAYER_RELAY` in `src/config.js`. Some broadcasters (beIN SPORTS, for instance) only allow their highlights to be played on YouTube itself. The relay listens to the player and reports those videos: the player is then replaced by a one-click **Watch on YouTube** button (or **Pop-out**, a small Chrome window), and the other results stay available. The extension does not try to get around these restrictions. If you have never accepted YouTube's cookie banner in Chrome, the search may be blocked by the consent page; open youtube.com once to accept it.
 
 ## Tests
 
-An automated suite (36 tests) loads the real extension in Chromium with simulated ESPN, TheSportsDB and YouTube responses, so it runs offline and never stresses the real APIs.
+An automated suite (39 tests) loads the real extension in Chromium with simulated ESPN, TheSportsDB and YouTube responses, so it runs offline and never stresses the real APIs.
 
 ```
 npm install
