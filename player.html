@@ -19,7 +19,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; frame-src https://www.youtube-nocookie.com https://www.youtube.com; style-src 'unsafe-inline'; script-src 'sha256-AXdwzDyEsr1v06vT83RNArSyb44Xw4217i1AYqnjR4Y='" />
+        content="default-src 'none'; frame-src https://www.youtube-nocookie.com https://www.youtube.com; style-src 'unsafe-inline'; script-src 'sha256-Ejm+bLoAgiajMKux/IvFDLGlpnHUnrcewZbxVSyZNlQ='" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <title>Player</title>
   <style>
@@ -46,7 +46,6 @@
       f.src = YT + '/embed/' + id + '?autoplay=1&rel=0&modestbranding=1&playsinline=1&enablejsapi=1&origin=' + encodeURIComponent(location.origin);
       f.title = 'YouTube video player';
       f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
-      f.allowFullscreen = true;
       f.referrerPolicy = 'strict-origin-when-cross-origin';
       document.body.replaceChildren(f);
       tell('loaded');
