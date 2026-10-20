@@ -1,11 +1,11 @@
 // Full-screen dashboard opened from the popup ("Open web page").
 // Shows football, F1 and GT3 side by side, with standings and inline YouTube highlights.
-import { fetchFootball, fetchF1, fetchGT, fetchStandings, fetchF1Standings, searchYouTube } from './src/api.js';
+import { fetchFootballRange, fetchF1, fetchGT, fetchStandings, fetchF1Standings, searchYouTube, clearCache, isoDay, ymd } from './src/api.js';
 import { FOOT_LEAGUES, GT_LEAGUES, loadSettings, saveSettings, isFavTeam } from './src/config.js';
 import { t, setLang, lang, localName, applyI18n } from './src/i18n.js';
 import { ensureEmbedReferer, openPopout } from './src/embed.js';
 import {
-  esc, norm, img, fmtTime, fmtDay, relDays, dayFromOffset, dayLabel, dayPhrase, emptyBox, skeleton, flag,
+  esc, norm, img, fmtTime, fmtDay, relDays, dayLabel, dayPhrase, emptyBox, skeleton, flag,
   THEME_ICONS, sessionName, defaultSession, leagueCard, standingsHtml, f1GpCard, f1NextCard, f1StandingsCard, gtCard,
 } from './src/render.js';
 
@@ -14,7 +14,8 @@ const $$ = (s) => [...document.querySelectorAll(s)];
 
 const state = {
   settings: null,
-  dayOffset: 0,
+  // Football period: a day, a week, a month or a custom range (see rangeBounds()).
+  range: { mode: 'day', anchor: noon(new Date()), from: null, to: null },
   liveOnly: false,
   query: '',
   foot: null,
@@ -31,6 +32,128 @@ const state = {
 };
 
 const isFav = (team) => isFavTeam(team, state.settings.favorites);
+
+/* ================================================================ date range */
+
+const DAY = 86400000;
+const MAX_RANGE_DAYS = 62;
+
+function noon(d) {
+  const x = new Date(d);
+  x.setHours(12, 0, 0, 0);
+  return x;
+}
+
+const offsetOf = (d) => Math.round((noon(d) - noon(new Date())) / DAY);
+
+/** { from, to } (both at noon, inclusive) for the current period. */
+function rangeBounds() {
+  const { mode, anchor } = state.range;
+  if (mode === 'week') {
+    const from = noon(anchor);
+    from.setDate(from.getDate() - ((from.getDay() + 6) % 7)); // back to Monday
+    const to = new Date(from);
+    to.setDate(from.getDate() + 6);
+    return { from, to };
+  }
+  if (mode === 'month') {
+    return {
+      from: noon(new Date(anchor.getFullYear(), anchor.getMonth(), 1)),
+      to: noon(new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0)),
+    };
+  }
+  if (mode === 'custom' && state.range.from) return { from: state.range.from, to: state.range.to };
+  return { from: noon(anchor), to: noon(anchor) };
+}
+
+const isSingleDay = () => {
+  const { from, to } = rangeBounds();
+  return ymd(from) === ymd(to);
+};
+
+function rangeLabel() {
+  const { mode } = state.range;
+  const { from, to } = rangeBounds();
+  const today = noon(new Date());
+  if (mode === 'day' || ymd(from) === ymd(to)) return dayLabel(offsetOf(from));
+  if (mode === 'month') {
+    const s = fmtDay(from, { month: 'long', year: 'numeric' });
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  }
+  if (mode === 'week' && today >= from && today <= to) return t('range.thisWeek');
+  const sameYear = from.getFullYear() === to.getFullYear();
+  return `${fmtDay(from, { day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }) })} – ${fmtDay(to, { day: 'numeric', month: 'short', ...(sameYear && to.getFullYear() === today.getFullYear() ? {} : { year: 'numeric' }) })}`;
+}
+
+/** Moves the period by n units (day / week / month / range length); n = 0 goes back to today. */
+function shiftRange(n) {
+  const r = state.range;
+  if (n === 0) {
+    if (r.mode === 'custom') return;
+    r.anchor = noon(new Date());
+  } else if (r.mode === 'day') r.anchor = new Date(r.anchor.getTime() + n * DAY);
+  else if (r.mode === 'week') r.anchor = new Date(r.anchor.getTime() + 7 * n * DAY);
+  else if (r.mode === 'month') r.anchor = noon(new Date(r.anchor.getFullYear(), r.anchor.getMonth() + n, 1));
+  else {
+    const len = Math.round((r.to - r.from) / DAY) + 1;
+    r.from = new Date(r.from.getTime() + n * len * DAY);
+    r.to = new Date(r.to.getTime() + n * len * DAY);
+    fillRangeForm();
+  }
+  state.scores.clear();
+  refresh({ footOnly: true });
+}
+
+function setRangeMode(mode) {
+  const r = state.range;
+  if (mode === 'custom') {
+    const { from, to } = rangeBounds(); // start from what is on screen
+    r.from = from;
+    r.to = to;
+  } else if (r.mode === 'custom') {
+    r.anchor = r.from ?? noon(new Date());
+  }
+  r.mode = mode;
+  paintRangeControls();
+  state.scores.clear();
+  refresh({ footOnly: true });
+}
+
+function paintRangeControls() {
+  const { mode } = state.range;
+  $$('.range-seg [data-range]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.range === mode)));
+  $('#custom-range').hidden = mode !== 'custom';
+  $('#day-label').textContent = rangeLabel();
+  fillRangeForm();
+}
+
+function fillRangeForm() {
+  if (state.range.mode !== 'custom') return;
+  $('#range-from').value = isoDay(state.range.from);
+  $('#range-to').value = isoDay(state.range.to);
+  $('#day-label').textContent = rangeLabel();
+}
+
+function applyCustomRange(e) {
+  e.preventDefault();
+  const from = noon(new Date($('#range-from').value + 'T12:00:00'));
+  const to = noon(new Date($('#range-to').value + 'T12:00:00'));
+  const err = $('#range-err');
+  if (Number.isNaN(+from) || Number.isNaN(+to) || to < from) {
+    err.textContent = t('range.bad');
+    return;
+  }
+  if ((to - from) / DAY + 1 > MAX_RANGE_DAYS) {
+    err.textContent = t('range.tooLong');
+    return;
+  }
+  err.textContent = '';
+  state.range.from = from;
+  state.range.to = to;
+  paintRangeControls();
+  state.scores.clear();
+  refresh({ footOnly: true });
+}
 
 async function persist(patch) {
   Object.assign(state.settings, patch);
@@ -76,6 +199,12 @@ function setLanguage(l) {
 
 /* ================================================================ painting */
 
+function matchesTileLabel() {
+  if (!isSingleDay()) return t('page.matchesRange', { range: rangeLabel() });
+  const off = offsetOf(rangeBounds().from);
+  return off ? t('page.matchesOn', { day: dayLabel(off) }) : t('page.matches');
+}
+
 function paintKpis() {
   const foot = state.foot?.leagues ?? [];
   const liveFoot = foot.reduce((n, lg) => n + lg.events.filter((e) => e.status.live).length, 0);
@@ -114,7 +243,7 @@ function paintKpis() {
     `<div class="kpi ${cls}"><span class="kpi-label">${esc(label)}</span><strong class="kpi-main">${esc(main)}</strong><span class="kpi-sub">${esc(sub)}</span></div>`;
   $('#kpis').innerHTML = [
     tile(liveFoot + (f1Live ? 1 : 0) ? 'is-live' : '', t('page.liveNow'), String(liveFoot + (f1Live ? 1 : 0)), t('page.liveSub')),
-    tile('', state.dayOffset ? t('page.matchesOn', { day: dayLabel(state.dayOffset) }) : t('page.matches'), String(total), t('page.matchesSub', { n: foot.length })),
+    tile('', matchesTileLabel(), String(total), t('page.matchesSub', { n: foot.length })),
     tile(f1Live ? 'is-live' : 'f1', t('page.f1'), f1Main, f1Sub),
     tile('gt', t('page.gt'), gtMain, gtSub),
   ].join('');
@@ -122,7 +251,7 @@ function paintKpis() {
 
 function paintFoot() {
   const box = $('#foot');
-  $('#day-label').textContent = dayLabel(state.dayOffset);
+  $('#day-label').textContent = rangeLabel();
   if (!state.settings.footLeagues.length) {
     box.innerHTML = emptyBox('⚙️', t('foot.noComp'), t('page.settingsHint'));
     return;
@@ -157,13 +286,51 @@ function paintFoot() {
       ? emptyBox('🔎', t('foot.noResult'), t('foot.noTeam', { q: state.query }))
       : state.liveOnly
         ? emptyBox('📺', t('foot.noLive'), t('foot.noLiveSub'))
-        : emptyBox('🗓️', t('foot.noMatch'), t('foot.noMatchSub', { day: dayPhrase(state.dayOffset) }));
+        : isSingleDay()
+          ? emptyBox('🗓️', t('foot.noMatch'), t('foot.noMatchSub', { day: dayPhrase(offsetOf(rangeBounds().from)) }))
+          : emptyBox('🗓️', t('foot.noMatch'), t('foot.noMatchRange'));
+    box.className = 'foot-masonry';
     return;
   }
   const open = $$('#foot .match.open').map((m) => m.dataset.id);
   const opts = { favorites: state.settings.favorites, flashIds: state.flashIds, follow: false };
-  box.innerHTML = lgs.map((lg) => leagueCard(lg, opts)).join('');
+  if (isSingleDay()) {
+    box.className = 'foot-masonry';
+    box.innerHTML = lgs.map((lg) => leagueCard(lg, opts)).join('');
+  } else {
+    box.className = 'foot-days';
+    box.innerHTML = paintDays(lgs, opts);
+  }
   for (const id of open) $(`#foot .match[data-id="${CSS.escape(id)}"]`)?.classList.add('open');
+}
+
+/** Week / month / range view: one block per day, competitions inside. */
+function paintDays(lgs, opts) {
+  const days = new Map(); // YYYY-MM-DD -> Map(leagueId -> league with that day's events)
+  for (const lg of lgs) {
+    for (const e of lg.events) {
+      const k = isoDay(new Date(e.date));
+      if (!days.has(k)) days.set(k, new Map());
+      const m = days.get(k);
+      if (!m.has(lg.id)) m.set(lg.id, { ...lg, events: [] });
+      m.get(lg.id).events.push(e);
+    }
+  }
+  const todayIso = isoDay(new Date());
+  return [...days.keys()]
+    .sort()
+    .map((k) => {
+      const leagues = [...days.get(k).values()];
+      for (const lg of leagues) lg.events.sort((a, b) => new Date(a.date) - new Date(b.date));
+      const n = leagues.reduce((s, lg) => s + lg.events.length, 0);
+      const d = k + 'T12:00:00';
+      const title = fmtDay(d, { weekday: 'long', day: 'numeric', month: 'long' });
+      return `<section class="day-block${k === todayIso ? ' is-today' : ''}" id="day-${k}">
+        <h3 class="day-sep"><span>${esc(title.charAt(0).toUpperCase() + title.slice(1))}</span><small>${esc(relDays(d))}</small><em>${n}</em></h3>
+        <div class="foot-masonry">${leagues.map((lg) => leagueCard(lg, opts)).join('')}</div>
+      </section>`;
+    })
+    .join('');
 }
 
 function paintF1() {
@@ -209,14 +376,16 @@ function paintAll() {
 /* ================================================================ loading */
 
 async function loadFoot() {
-  const offset = state.dayOffset;
+  const { from, to } = rangeBounds();
+  const key = `${ymd(from)}-${ymd(to)}`;
   let data;
   try {
-    data = await fetchFootball(dayFromOffset(offset), state.settings.footLeagues);
+    data = await fetchFootballRange(from, to, state.settings.footLeagues);
   } catch {
     data = { leagues: [], errors: [], failedAll: true };
   }
-  if (offset !== state.dayOffset) return;
+  const now = rangeBounds();
+  if (key !== `${ymd(now.from)}-${ymd(now.to)}`) return; // the period changed meanwhile
   // Remember scores to flash the ones that changed since the last refresh.
   state.flashIds = new Set();
   for (const lg of data.leagues) {
@@ -344,11 +513,6 @@ async function openVideo(query, label) {
 
 /* ================================================================ init */
 
-function shiftDay(n) {
-  state.dayOffset = n === 0 ? 0 : state.dayOffset + n;
-  state.scores.clear();
-  refresh({ footOnly: true });
-}
 
 async function init() {
   state.settings = await loadSettings();
@@ -356,10 +520,16 @@ async function init() {
 
   $$('.lang-seg [data-lang]').forEach((b) => b.addEventListener('click', () => setLanguage(b.dataset.lang)));
   $('#theme-btn').addEventListener('click', cycleTheme);
-  $('#refresh').addEventListener('click', () => refresh());
-  $('#day-prev').addEventListener('click', () => shiftDay(-1));
-  $('#day-next').addEventListener('click', () => shiftDay(1));
-  $('#day-label').addEventListener('click', () => state.dayOffset && shiftDay(0));
+  $('#refresh').addEventListener('click', async () => {
+    await clearCache();
+    refresh();
+  });
+  $('#day-prev').addEventListener('click', () => shiftRange(-1));
+  $('#day-next').addEventListener('click', () => shiftRange(1));
+  $('#day-label').addEventListener('click', () => shiftRange(0));
+  $$('.range-seg [data-range]').forEach((b) => b.addEventListener('click', () => setRangeMode(b.dataset.range)));
+  $('#custom-range').addEventListener('submit', applyCustomRange);
+  paintRangeControls();
   $('#live-only').addEventListener('click', (e) => {
     state.liveOnly = !state.liveOnly;
     e.currentTarget.setAttribute('aria-pressed', String(state.liveOnly));
@@ -417,8 +587,11 @@ async function init() {
     if (k === 'r') refresh();
     else if (k === 't') cycleTheme();
     else if (k === 'l') setLanguage(lang() === 'fr' ? 'en' : 'fr');
-    else if (e.key === 'ArrowLeft') shiftDay(-1);
-    else if (e.key === 'ArrowRight') shiftDay(1);
+    else if (e.key === 'ArrowLeft') shiftRange(-1);
+    else if (e.key === 'ArrowRight') shiftRange(1);
+    else if (k === 'd') setRangeMode('day');
+    else if (k === 's' || k === 'w') setRangeMode('week');
+    else if (k === 'm') setRangeMode('month');
     else if (e.key === '/') {
       e.preventDefault();
       $('#search').focus();

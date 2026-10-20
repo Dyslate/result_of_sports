@@ -15,6 +15,10 @@ Available in **English** and **French** (follows Chrome's language, or switch wi
 </p>
 
 <p align="center">
+  <img src="docs/page-week.png" width="820" alt="Week view">
+</p>
+
+<p align="center">
   <img src="docs/page-video.png" width="405" alt="Inline video highlights">
   <img src="docs/page-standings.png" width="405" alt="League table">
 </p>
@@ -42,6 +46,7 @@ Available in **English** and **French** (follows Chrome's language, or switch wi
 
 **Full-screen page** ("Open web page" button, or <kbd>W</kbd> in the popup)
 - Football, F1 and GT3 side by side, with live / today / F1 / GT3 summary tiles
+- **Day / Week / Month / custom range** for football (up to 62 days), grouped by day
 - **Inline highlights**: the Highlights button plays the first YouTube result for the match right in the page, with the next results as alternatives
 - League tables in a dialog, responsive down to phone width
 - Stays in sync with the popup settings (theme, language, competitions, favourites)
@@ -65,7 +70,8 @@ Available in **English** and **French** (follows Chrome's language, or switch wi
 | Key | Popup | Page |
 |---|---|---|
 | `1` `2` `3` | Football / F1 / GT3 tab | — |
-| `←` `→` | Previous / next day | Previous / next day |
+| `←` `→` | Previous / next day | Previous / next period |
+| `D` `S` `M` | — | Day / week / month view |
 | `/` | Search for a team | Search for a team |
 | `R` | Refresh | Refresh |
 | `T` | Cycle light / dark mode | Cycle light / dark mode |
@@ -95,7 +101,9 @@ Requires Chrome 123 or later.
 | GT3 | [TheSportsDB](https://www.thesportsdb.com) (free key) | calendar |
 | Highlights | YouTube search results page | first videos for a search |
 
-None of these require an API key, but they are not officially documented and may change. No free source publishes live GT3 race results, so the GT3 section is limited to the calendar.
+None of these require an API key, but they are not officially documented and may change.
+
+To stay polite with these APIs, responses are cached in `chrome.storage.session`, shared by the popup, the page and the background worker (cleared when the browser closes): 30 s when the period includes today, 6 h for past days, 15 min for future fixtures, 10 min for tables, 1 h for the GT3 calendar and video searches. Requests are limited to 4 at a time and retried on errors; the refresh button bypasses the cache. No free source publishes live GT3 race results, so the GT3 section is limited to the calendar.
 
 Inline highlights rely on YouTube embeds. YouTube rejects embeds from pages that don't send an http(s) `Referer` (error 153), and extension pages are `chrome-extension://`, so the extension uses a `declarativeNetRequest` rule (`src/embed.js`) to set the Referer on its own player iframe only; other sites are not affected. Some broadcasters also disable embedding on their videos: use **Pop-out** (small Chrome window) or **Watch on YouTube** in that case. If you have never accepted YouTube's cookie banner in Chrome, the search may be blocked by the consent page; open youtube.com once to accept it.
 

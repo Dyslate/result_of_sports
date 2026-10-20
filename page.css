@@ -19,11 +19,37 @@ body.page {
 .pg-brand img { border-radius: 11px; box-shadow: var(--shadow); }
 .pg-brand h1 { margin: 0; font-size: 22px; letter-spacing: -0.02em; font-weight: 800; }
 .pg-date { color: var(--muted); font-size: 13px; margin-top: 1px; }
+.pg-center { display: flex; align-items: center; gap: 10px; }
 .pg-daynav {
   display: flex; align-items: center; gap: 2px; padding: 4px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow);
 }
-.pg-daynav .day-label { min-width: 150px; font-size: 14px; }
+.pg-daynav .day-label { min-width: 170px; font-size: 14px; }
+.range-seg {
+  display: inline-flex; gap: 2px; padding: 4px; border-radius: 12px; background: var(--surface-2);
+}
+.range-seg button {
+  border: 0; background: transparent; cursor: pointer; padding: 7px 12px; border-radius: 8px;
+  font-weight: 650; font-size: 12px; color: var(--muted);
+}
+.range-seg button:hover { color: var(--text); }
+.range-seg button[aria-checked="true"] { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+
+/* custom range form */
+.custom-range {
+  display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 10px;
+  margin: -6px 0 20px; padding: 10px 14px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); box-shadow: var(--shadow); animation: rise .2s ease both;
+}
+.custom-range label { display: flex; align-items: center; gap: 8px; font-weight: 650; color: var(--muted); }
+.custom-range input[type="date"] {
+  font: inherit; color: var(--text); background: var(--surface-2); border: 1px solid var(--line);
+  border-radius: 8px; padding: 6px 8px; color-scheme: inherit;
+}
+.custom-range input[type="date"]:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.custom-range .btn { height: 32px; }
+.range-err { color: var(--live); font-size: 12px; font-weight: 600; }
+.range-err:empty { display: none; }
 .pg-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .pg-actions .icon-btn { width: 36px; height: 36px; border-radius: 10px; }
 .pg-updated { color: var(--faint); font-size: 12px; margin-left: 4px; white-space: nowrap; }
@@ -86,6 +112,23 @@ body.page {
 
 /* Football cards flow in two columns on wide screens. */
 .foot-masonry { columns: 2 380px; column-gap: 16px; }
+
+/* Week / month / range: one block per day. */
+.day-block { margin-bottom: 8px; }
+.day-sep {
+  position: sticky; top: 0; z-index: 2; display: flex; align-items: baseline; gap: 10px;
+  margin: 0 0 12px; padding: 10px 2px 8px; font-size: 15px; font-weight: 800; letter-spacing: -0.01em;
+  background: linear-gradient(var(--bg) 75%, transparent); border-bottom: 1px solid var(--line);
+}
+.day-sep small { color: var(--muted); font-size: 12px; font-weight: 600; }
+.day-sep em {
+  margin-left: auto; font-style: normal; font-size: 11px; font-weight: 700; color: var(--muted);
+  background: var(--surface-2); padding: 2px 8px; border-radius: 10px;
+}
+.day-block.is-today .day-sep span { color: var(--accent); }
+.day-block.is-today .day-sep::before {
+  content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); align-self: center;
+}
 .foot-masonry > .card, .foot-masonry > .skel-col { break-inside: avoid; margin-bottom: 16px; }
 .foot-masonry > .empty { column-span: all; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
 body.page .card { margin-bottom: 16px; }
@@ -140,6 +183,10 @@ body.page .gp-card .grid-res .res:nth-child(odd) { border-right: 1px solid var(-
 .vid-alt small { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; }
 
 /* ---------- responsive ---------- */
+@media (max-width: 1250px) {
+  .pg-head { grid-template-columns: 1fr auto; }
+  .pg-center { grid-column: 1 / -1; grid-row: 2; justify-content: center; flex-wrap: wrap; }
+}
 @media (max-width: 1100px) {
   .pg-grid { grid-template-columns: 1fr; }
   .kpis { grid-template-columns: repeat(2, 1fr); }
@@ -150,6 +197,8 @@ body.page .gp-card .grid-res .res:nth-child(odd) { border-right: 1px solid var(-
   .kpi { padding: 14px; min-height: 92px; }
   .kpi-main { font-size: 20px; }
   .pg-head { grid-template-columns: 1fr; justify-items: start; }
+  .pg-center { grid-row: auto; justify-content: flex-start; }
+  .range-seg button { padding: 6px 9px; }
   .pg-actions { justify-content: flex-start; flex-wrap: wrap; }
   .col-head { flex-direction: column; align-items: stretch; }
   .col-tools .search { flex: 1; width: auto; }

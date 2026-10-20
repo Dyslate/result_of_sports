@@ -1,5 +1,5 @@
 // Popup UI: tabs (football / F1 / GT3), settings panel and standings panel.
-import { fetchFootball, fetchF1, fetchGT, fetchStandings, fetchF1Standings } from './src/api.js';
+import { fetchFootball, fetchF1, fetchGT, fetchStandings, fetchF1Standings, clearCache } from './src/api.js';
 import { FOOT_LEAGUES, GT_LEAGUES, PALETTES, CUSTOM_PRESETS, loadSettings, saveSettings, isFavTeam } from './src/config.js';
 import { t, setLang, lang, localName, applyI18n } from './src/i18n.js';
 import {
@@ -235,7 +235,7 @@ async function renderFoot(silent) {
   }
   if (state.tab !== 'foot' || offset !== state.dayOffset) return false;
   if (data.failedAll) {
-    content.innerHTML = emptyBox('📡', t('foot.err'), t('err.sub'));
+    content.innerHTML = emptyBox('📡', t('foot.err'), t('err.sub')) + `<div class="retry"><button class="btn" data-retry>${esc(t('ui.retry'))}</button></div>`;
     return false;
   }
   state.lastFoot = data;
@@ -491,7 +491,8 @@ async function init() {
   $('#theme-btn').addEventListener('click', cycleTheme);
   $('#lang-btn').addEventListener('click', toggleLanguage);
   $('#open-page').addEventListener('click', openWebPage);
-  $('#refresh').addEventListener('click', () => {
+  $('#refresh').addEventListener('click', async () => {
+    await clearCache();
     render();
     try {
       chrome.runtime.sendMessage({ type: 'refresh-badge' });
@@ -518,6 +519,9 @@ async function init() {
   });
 
   content.addEventListener('click', (e) => {
+    if (e.target.closest('[data-retry]')) {
+      return clearCache().then(() => render());
+    }
     const follow = e.target.closest('[data-follow]');
     if (follow) return toggleFavorite(follow.dataset.follow);
     const st = e.target.closest('[data-standings]');

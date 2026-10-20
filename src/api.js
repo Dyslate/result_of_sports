@@ -3,16 +3,143 @@
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports';
 const TSDB = 'https://www.thesportsdb.com/api/v1/json/123';
 
-async function getJSON(url, timeoutMs = 10000) {
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const MIN = 60000;
+
+/* ---------------------------------------------------------------- Network: limit, retry, dedupe */
+
+// At most MAX_PARALLEL requests in flight per context: ESPN throttles bursts of requests.
+const MAX_PARALLEL = 4;
+let active = 0;
+const queue = [];
+async function withSlot(fn) {
+  if (active >= MAX_PARALLEL) await new Promise((r) => queue.push(r));
+  active++;
+  try {
+    return await fn();
+  } finally {
+    active--;
+    queue.shift()?.();
+  }
+}
+
+async function fetchOnce(url, timeoutMs) {
   const ctrl = new AbortController();
-  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
     const res = await fetch(url, { signal: ctrl.signal, cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      const err = new Error(`HTTP ${res.status}`);
+      err.status = res.status;
+      throw err;
+    }
     return await res.json();
   } finally {
-    clearTimeout(t);
+    clearTimeout(timer);
   }
+}
+
+const inflight = new Map(); // url -> Promise, so identical concurrent calls share one request
+
+/** GET JSON with a concurrency limit and up to 2 retries on network errors, 429 and 5xx. */
+function getJSON(url, { timeoutMs = 12000 } = {}) {
+  if (inflight.has(url)) return inflight.get(url);
+  const p = (async () => {
+    let lastErr;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await withSlot(() => fetchOnce(url, timeoutMs));
+      } catch (e) {
+        lastErr = e;
+        // 4xx other than 429 won't get better by retrying.
+        if (e.status && e.status !== 429 && e.status < 500) break;
+        await sleep(700 * (attempt + 1) + Math.random() * 300);
+      }
+    }
+    throw lastErr;
+  })().finally(() => inflight.delete(url));
+  inflight.set(url, p);
+  return p;
+}
+
+/* ---------------------------------------------------------------- Shared cache */
+
+// Normalised results are cached in chrome.storage.session, which is shared by the popup,
+// the full-screen page and the service worker, survives closing the popup and is wiped
+// when the browser closes. A small in-memory layer avoids hitting storage on every call.
+const PREFIX = 'c:';
+const memory = new Map(); // key -> { t, ttl, data }
+const session = () => globalThis.chrome?.storage?.session;
+
+async function readEntry(key) {
+  const m = memory.get(key);
+  if (m) return m;
+  try {
+    const got = await session()?.get(key);
+    const e = got?.[key];
+    if (e) memory.set(key, e);
+    return e ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function writeEntry(key, entry) {
+  memory.set(key, entry);
+  const s = session();
+  if (!s) return;
+  try {
+    await s.set({ [key]: entry });
+  } catch {
+    // Quota reached (10 MB): drop the oldest half of our entries and try once more.
+    try {
+      const all = await s.get(null);
+      const mine = Object.entries(all).filter(([k]) => k.startsWith(PREFIX)).sort((x, y) => x[1].t - y[1].t);
+      await s.remove(mine.slice(0, Math.ceil(mine.length / 2)).map(([k]) => k));
+      await s.set({ [key]: entry });
+    } catch {
+      /* memory cache only */
+    }
+  }
+}
+
+/**
+ * Returns the cached value for `key` if younger than `ttl` ms, otherwise runs `produce()`
+ * and caches its result. On failure, serves the stale value when there is one.
+ */
+async function cached(key, ttl, produce) {
+  key = PREFIX + key;
+  const hit = await readEntry(key);
+  if (hit && Date.now() - hit.t < ttl) return hit.data;
+  try {
+    const data = await produce();
+    await writeEntry(key, { t: Date.now(), data });
+    return data;
+  } catch (e) {
+    if (hit) return hit.data;
+    throw e;
+  }
+}
+
+/** Empties the cache (manual refresh button). */
+export async function clearCache() {
+  memory.clear();
+  try {
+    const s = session();
+    if (!s) return;
+    const all = await s.get(null);
+    await s.remove(Object.keys(all).filter((k) => k.startsWith(PREFIX)));
+  } catch {
+    /* nothing to clear */
+  }
+}
+
+/** Cache lifetime for football data: short when today is involved, long for the past. */
+function footTtl(from, to) {
+  const today = ymd(new Date());
+  if (ymd(to) < today) return 6 * 60 * MIN; // finished matches don't change
+  if (ymd(from) > today) return 15 * MIN; // fixtures only
+  return 30 * 1000; // live scores
 }
 
 export function ymd(date) {
@@ -113,30 +240,41 @@ function normalizeFootEvent(ev) {
 
 /** Matches on a given date for a list of competitions. */
 export async function fetchFootball(date, leagueIds) {
-  const day = ymd(date);
+  return fetchFootballRange(date, date, leagueIds);
+}
+
+/** Matches between two dates (inclusive) for a list of competitions: one request per competition. */
+export async function fetchFootballRange(from, to, leagueIds) {
+  const span = ymd(from) === ymd(to) ? ymd(from) : `${ymd(from)}-${ymd(to)}`;
+  const ttl = footTtl(from, to);
   const results = await Promise.allSettled(
-    leagueIds.map((id) => getJSON(`${ESPN}/soccer/${id}/scoreboard?dates=${day}`))
+    leagueIds.map((id) => cached(`foot:${id}:${span}`, ttl, async () => normalizeLeague(id, await getJSON(`${ESPN}/soccer/${id}/scoreboard?dates=${span}&limit=400`))))
   );
   const leagues = [];
   const errors = [];
   results.forEach((r, i) => {
-    if (r.status !== 'fulfilled') {
-      errors.push(leagueIds[i]);
-      return;
-    }
-    const data = r.value;
-    const events = (data.events ?? []).map(normalizeFootEvent);
-    if (!events.length) return;
-    events.sort((a, b) => new Date(a.date) - new Date(b.date));
-    const lg = data.leagues?.[0] ?? {};
-    leagues.push({
-      id: leagueIds[i],
-      name: lg.name || lg.abbreviation || leagueIds[i],
-      logo: lg.logos?.[0]?.href ?? '',
-      events,
-    });
+    if (r.status !== 'fulfilled') errors.push(leagueIds[i]);
+    else if (r.value) leagues.push(r.value);
   });
   return { leagues, errors, failedAll: errors.length === leagueIds.length && leagueIds.length > 0 };
+}
+
+/** ESPN scoreboard → { id, name, logo, events } or null when there's no match. */
+function normalizeLeague(id, data) {
+  const events = [];
+  // One malformed event must not take the whole competition down with it.
+  for (const ev of data?.events ?? []) {
+    try {
+      const n = normalizeFootEvent(ev);
+      if (n.home && n.away) events.push(n);
+    } catch {
+      /* skip this event */
+    }
+  }
+  if (!events.length) return null;
+  events.sort((a, b) => new Date(a.date) - new Date(b.date));
+  const lg = data.leagues?.[0] ?? {};
+  return { id, name: lg.name || lg.abbreviation || id, logo: lg.logos?.[0]?.href ?? '', events };
 }
 
 /* ---------------------------------------------------------------- F1 */
@@ -182,7 +320,11 @@ function eventIdFromRef(ref) {
 }
 
 /** Current weekend (or last GP) + next GP. */
-export async function fetchF1(now = new Date()) {
+export function fetchF1(now = new Date()) {
+  return cached('f1', 30 * 1000, () => fetchF1Live(now));
+}
+
+async function fetchF1Live(now) {
   const base = await getJSON(`${ESPN}/racing/f1/scoreboard`);
   const calendar = (base.leagues?.[0]?.calendar ?? []).map((c) => ({
     name: c.label,
@@ -231,7 +373,11 @@ function collectGroups(node, out = []) {
 }
 
 /** Football table for a competition (handles groups). */
-export async function fetchStandings(leagueId) {
+export function fetchStandings(leagueId) {
+  return cached(`stand:${leagueId}`, 10 * MIN, () => fetchStandingsLive(leagueId));
+}
+
+async function fetchStandingsLive(leagueId) {
   const data = await getJSON(`${ESPN_V2}/soccer/${leagueId}/standings`);
   const groups = collectGroups(data).map((g) => ({
     name: g.name,
@@ -256,7 +402,11 @@ export async function fetchStandings(leagueId) {
 }
 
 /** F1 championship: drivers (and constructors when provided). */
-export async function fetchF1Standings() {
+export function fetchF1Standings() {
+  return cached('f1stand', 10 * MIN, fetchF1StandingsLive);
+}
+
+async function fetchF1StandingsLive() {
   const data = await getJSON(`${ESPN_V2}/racing/f1/standings`);
   return (data.children ?? []).map((c) => ({
     name: c.name ?? '',
@@ -299,7 +449,11 @@ function collectVideos(node, out, max) {
  * First videos of a YouTube search (no API key: parses ytInitialData from the results page).
  * Uses the user's YouTube cookies so the EU consent wall doesn't block the request.
  */
-export async function searchYouTube(query, { max = 5, hl = 'fr' } = {}) {
+export function searchYouTube(query, { max = 5, hl = 'fr' } = {}) {
+  return cached(`yt:${hl}:${query}`, 60 * MIN, () => searchYouTubeLive(query, max, hl));
+}
+
+async function searchYouTubeLive(query, max, hl) {
   const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&hl=${hl}`;
   const res = await fetch(url, { credentials: 'include' });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -332,7 +486,16 @@ function gtEvent(e) {
 }
 
 /** Last and next event of each GT championship. */
-export async function fetchGT(leagues) {
+export function fetchGT(leagues) {
+  return cached(`gt:${leagues.map((l) => l.id).join(',')}`, 60 * MIN, async () => {
+    const out = await fetchGTLive(leagues);
+    // Don't cache a complete failure for an hour.
+    if (out.length && out.every((c) => c.error)) throw new Error('GT unavailable');
+    return out;
+  });
+}
+
+async function fetchGTLive(leagues) {
   const out = await Promise.all(
     leagues.map(async (lg) => {
       const [past, next] = await Promise.allSettled([

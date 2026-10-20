@@ -109,8 +109,12 @@ chrome.alarms.onAlarm.addListener((a) => {
   if (a.name === ALARM) tick();
 });
 
+// Debounced: ticking several boxes in the settings must not fire a full refresh per click.
+let changeTimer;
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'sync' && (changes.badge || changes.footLeagues || changes.lang)) tick();
+  if (area !== 'sync' || !(changes.badge || changes.footLeagues || changes.lang)) return;
+  clearTimeout(changeTimer);
+  changeTimer = setTimeout(tick, 4000);
 });
 
 chrome.runtime.onMessage.addListener((msg) => {
