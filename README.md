@@ -103,7 +103,9 @@ Requires Chrome 123 or later.
 
 None of these require an API key, but they are not officially documented and may change.
 
-To stay polite with these APIs, responses are cached in `chrome.storage.session`, shared by the popup, the page and the background worker (cleared when the browser closes): 30 s when the period includes today, 6 h for past days, 15 min for future fixtures, 10 min for tables, 1 h for the GT3 calendar and video searches. Requests are limited to 4 at a time and retried on errors; the refresh button bypasses the cache. No free source publishes live GT3 race results, so the GT3 section is limited to the calendar.
+To stay polite with these APIs, responses are cached in `chrome.storage.session`, shared by the popup, the page and the background worker (cleared when the browser closes): 30 s when the period includes today, 6 h for past days, 15 min for future fixtures, 10 min for tables, 1 h for the GT3 calendar and video searches. Requests are limited to 4 at a time and retried on errors; the refresh button bypasses the cache.
+
+If ESPN answers 403 or 429 (it throttles an IP that sends too many requests), the extension stops calling it for 5 minutes, then 10, 20, 40 and 60 minutes if the block persists, shows when it will try again, and serves cached data meanwhile. Background polling also adapts: every minute while something is live, every 2 minutes just before a kick-off, every 10 minutes otherwise. No free source publishes live GT3 race results, so the GT3 section is limited to the calendar.
 
 Inline highlights rely on YouTube embeds. YouTube rejects embeds from pages that don't send an http(s) `Referer` (error 153), and extension pages are `chrome-extension://`, so the extension uses a `declarativeNetRequest` rule (`src/embed.js`) to set the Referer on its own player iframe only; other sites are not affected. Some broadcasters also disable embedding on their videos: use **Pop-out** (small Chrome window) or **Watch on YouTube** in that case. If you have never accepted YouTube's cookie banner in Chrome, the search may be blocked by the consent page; open youtube.com once to accept it.
 

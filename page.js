@@ -259,7 +259,10 @@ function paintFoot() {
   const data = state.foot;
   if (!data) return;
   if (data.failedAll) {
-    box.innerHTML = emptyBox('📡', t('foot.err'), t('err.sub'));
+    box.className = 'foot-masonry';
+    box.innerHTML = data.blockedUntil
+      ? emptyBox('⏳', t('err.blocked'), t('err.blockedSub', { time: fmtTime(data.blockedUntil) }))
+      : emptyBox('📡', t('foot.err'), t('err.sub'));
     return;
   }
   const q = norm(state.query);
@@ -337,7 +340,9 @@ function paintF1() {
   const box = $('#f1');
   if (!state.f1) return;
   if (state.f1.error) {
-    box.innerHTML = emptyBox('📡', t('f1.err'), t('err.sub'));
+    box.innerHTML = state.f1.blockedUntil
+      ? emptyBox('⏳', t('err.blocked'), t('err.blockedSub', { time: fmtTime(state.f1.blockedUntil) }))
+      : emptyBox('📡', t('f1.err'), t('err.sub'));
     return;
   }
   const { current, next, round, total } = state.f1;
@@ -403,7 +408,7 @@ async function loadMotor() {
   const s = state.settings;
   const gtLeagues = [...GT_LEAGUES, ...s.customGt].filter((l) => s.gtLeagues.includes(l.id));
   const [f1, f1s, gt] = await Promise.allSettled([fetchF1(), fetchF1Standings(), gtLeagues.length ? fetchGT(gtLeagues) : []]);
-  state.f1 = f1.status === 'fulfilled' ? f1.value : { error: true };
+  state.f1 = f1.status === 'fulfilled' ? f1.value : { error: true, blockedUntil: f1.reason?.blockedUntil };
   state.f1Stand = f1s.status === 'fulfilled' ? f1s.value : null;
   state.gt = gt.status === 'fulfilled' ? gt.value : { error: true };
 }

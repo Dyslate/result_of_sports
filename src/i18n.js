@@ -92,6 +92,8 @@ const DICT = {
     'foot.follow': 'Suivre',
 
     'err.sub': 'Vérifiez votre connexion puis actualisez.',
+    'err.blocked': 'ESPN limite temporairement les requêtes',
+    'err.blockedSub': 'Erreur 403 : trop de requêtes depuis votre connexion. L’extension se met en pause et réessaiera seule à {time}.',
 
     'stand.title': 'Classement · {name}',
     'stand.none': 'Pas de classement',
@@ -324,6 +326,8 @@ const DICT = {
     'foot.follow': 'Follow',
 
     'err.sub': 'Check your connection, then refresh.',
+    'err.blocked': 'ESPN is temporarily limiting requests',
+    'err.blockedSub': 'Error 403: too many requests from your connection. The extension is pausing and will try again by itself at {time}.',
 
     'stand.title': 'Table · {name}',
     'stand.none': 'No table',

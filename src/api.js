@@ -39,20 +39,99 @@ async function fetchOnce(url, timeoutMs) {
   }
 }
 
+/* ---------------------------------------------------------------- ESPN back-off */
+
+// When ESPN answers 403 / 429 it is throttling this IP. Every further request extends the
+// block, so all contexts (popup, page, service worker) stop calling ESPN for a while:
+// 5, 10, 20, 40 then 60 minutes on repeated blocks. Shared through chrome.storage.local.
+const COOLDOWN_KEY = 'apiCooldown';
+let cooldown = { until: 0, strikes: 0 };
+let cooldownLoaded = false;
+
+async function loadCooldown() {
+  if (cooldownLoaded) return cooldown;
+  try {
+    const got = await globalThis.chrome?.storage?.local?.get(COOLDOWN_KEY);
+    if (got?.[COOLDOWN_KEY]) cooldown = got[COOLDOWN_KEY];
+  } catch {
+    /* preview */
+  }
+  cooldownLoaded = true;
+  return cooldown;
+}
+
+async function saveCooldown() {
+  try {
+    await globalThis.chrome?.storage?.local?.set({ [COOLDOWN_KEY]: cooldown });
+  } catch {
+    /* preview */
+  }
+}
+
+try {
+  // Keep every context in sync when another one records a block.
+  globalThis.chrome?.storage?.onChanged?.addListener((changes, area) => {
+    if (area === 'local' && changes[COOLDOWN_KEY]) cooldown = changes[COOLDOWN_KEY].newValue ?? { until: 0, strikes: 0 };
+  });
+} catch {
+  /* preview */
+}
+
+/** Timestamp until which ESPN requests are paused (0 when not blocked). */
+export async function getCooldown() {
+  await loadCooldown();
+  return cooldown.until > Date.now() ? cooldown.until : 0;
+}
+
+const isEspn = (url) => url.startsWith('https://site.api.espn.com/');
+
 const inflight = new Map(); // url -> Promise, so identical concurrent calls share one request
 
 /** GET JSON with a concurrency limit and up to 2 retries on network errors, 429 and 5xx. */
 function getJSON(url, { timeoutMs = 12000 } = {}) {
   if (inflight.has(url)) return inflight.get(url);
   const p = (async () => {
+    if (isEspn(url)) {
+      await loadCooldown();
+      if (cooldown.until > Date.now()) {
+        const err = new Error('ESPN cooldown');
+        err.blockedUntil = cooldown.until;
+        throw err;
+      }
+    }
     let lastErr;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        return await withSlot(() => fetchOnce(url, timeoutMs));
+        const data = await withSlot(() => {
+          // Re-check once a slot frees up: a sibling request may have just been throttled.
+          if (isEspn(url) && cooldown.until > Date.now()) {
+            const err = new Error('ESPN cooldown');
+            err.blockedUntil = cooldown.until;
+            throw err;
+          }
+          return fetchOnce(url, timeoutMs);
+        });
+        if (isEspn(url) && cooldown.strikes) {
+          cooldown = { until: 0, strikes: 0 };
+          saveCooldown();
+        }
+        return data;
       } catch (e) {
         lastErr = e;
-        // 4xx other than 429 won't get better by retrying.
-        if (e.status && e.status !== 429 && e.status < 500) break;
+        if (e.blockedUntil) break; // paused by a sibling request
+        if (isEspn(url) && (e.status === 403 || e.status === 429)) {
+          // Throttled: back off for everyone instead of retrying. Requests failing in the
+          // same wave count as one strike.
+          if (cooldown.until <= Date.now()) {
+            const strikes = (cooldown.strikes || 0) + 1;
+            cooldown = { strikes, until: Date.now() + Math.min(60, 5 * 2 ** (strikes - 1)) * MIN };
+            await saveCooldown();
+          }
+          e.blockedUntil = cooldown.until;
+          break;
+        }
+        // Other 4xx won't get better by retrying.
+        if (e.status && e.status < 500) break;
         await sleep(700 * (attempt + 1) + Math.random() * 300);
       }
     }
@@ -252,11 +331,14 @@ export async function fetchFootballRange(from, to, leagueIds) {
   );
   const leagues = [];
   const errors = [];
+  let blockedUntil = 0;
   results.forEach((r, i) => {
-    if (r.status !== 'fulfilled') errors.push(leagueIds[i]);
-    else if (r.value) leagues.push(r.value);
+    if (r.status !== 'fulfilled') {
+      errors.push(leagueIds[i]);
+      blockedUntil = Math.max(blockedUntil, r.reason?.blockedUntil ?? 0);
+    } else if (r.value) leagues.push(r.value);
   });
-  return { leagues, errors, failedAll: errors.length === leagueIds.length && leagueIds.length > 0 };
+  return { leagues, errors, blockedUntil, failedAll: errors.length === leagueIds.length && leagueIds.length > 0 };
 }
 
 /** ESPN scoreboard → { id, name, logo, events } or null when there's no match. */

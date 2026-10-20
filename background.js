@@ -1,5 +1,5 @@
 // Service worker: "live" badge on the toolbar icon + goal notifications.
-import { fetchFootball, fetchF1 } from './src/api.js';
+import { fetchFootball, fetchF1, getCooldown } from './src/api.js';
 import { loadSettings, isFavTeam, FOOT_LEAGUES } from './src/config.js';
 import { t, setLang, localName } from './src/i18n.js';
 import { ensureEmbedReferer } from './src/embed.js';
@@ -68,13 +68,23 @@ async function checkGoals(leagues, s) {
   await chrome.storage.local.set({ snap: next });
 }
 
+/**
+ * Checks scores, updates the badge, then schedules the next check. Polling adapts to what is
+ * happening: every minute while something is live, every 2 min just before a kick-off,
+ * every 10 min otherwise, and not at all while ESPN is throttling us.
+ */
 async function tick() {
   const s = await loadSettings();
   setLang(s.lang);
   let live = 0;
+  let soon = false;
   try {
     const foot = await fetchFootball(new Date(), s.footLeagues);
-    for (const lg of foot.leagues) live += lg.events.filter((e) => e.status.live).length;
+    const now = Date.now();
+    for (const lg of foot.leagues) {
+      live += lg.events.filter((e) => e.status.live).length;
+      if (lg.events.some((e) => e.status.state === 'pre' && new Date(e.date) - now < 20 * 60000 && new Date(e.date) > now - 5 * 60000)) soon = true;
+    }
     await checkGoals(foot.leagues, s);
   } catch {
     /* offline */
@@ -83,28 +93,24 @@ async function tick() {
     const f1 = await fetchF1();
     if (f1.current?.sessions.some((x) => x.state === 'in')) live += 1;
   } catch {
-    /* offline */
+    /* offline or throttled */
   }
   const show = s.badge && live > 0;
   await chrome.action.setBadgeBackgroundColor({ color: '#e5322d' });
   if (chrome.action.setBadgeTextColor) await chrome.action.setBadgeTextColor({ color: '#ffffff' });
   await chrome.action.setBadgeText({ text: show ? String(live) : '' });
   await chrome.action.setTitle({ title: live > 0 ? t('badge.title', { app: t('app.title'), n: live }) : t('app.title') });
-}
 
-function ensureAlarm() {
-  chrome.alarms.create(ALARM, { periodInMinutes: 1 });
+  const blocked = await getCooldown();
+  const delay = blocked ? Math.max(1, (blocked - Date.now()) / 60000 + 0.5) : live ? 1 : soon ? 2 : 10;
+  chrome.alarms.create(ALARM, { delayInMinutes: delay });
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  ensureAlarm();
   ensureEmbedReferer();
   tick();
 });
-chrome.runtime.onStartup.addListener(() => {
-  ensureAlarm();
-  tick();
-});
+chrome.runtime.onStartup.addListener(() => tick());
 chrome.alarms.onAlarm.addListener((a) => {
   if (a.name === ALARM) tick();
 });

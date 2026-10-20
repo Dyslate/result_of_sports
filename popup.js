@@ -3,7 +3,7 @@ import { fetchFootball, fetchF1, fetchGT, fetchStandings, fetchF1Standings, clea
 import { FOOT_LEAGUES, GT_LEAGUES, PALETTES, CUSTOM_PRESETS, loadSettings, saveSettings, isFavTeam } from './src/config.js';
 import { t, setLang, lang, localName, applyI18n } from './src/i18n.js';
 import {
-  esc, norm, dayFromOffset, dayLabel, dayPhrase, emptyBox, skeleton, stamp, flag, THEME_ICONS,
+  esc, norm, fmtTime, dayFromOffset, dayLabel, dayPhrase, emptyBox, skeleton, stamp, flag, THEME_ICONS,
   leagueCard, standingsHtml, f1GpCard, f1NextCard, f1StandingsCard, gtCard,
 } from './src/render.js';
 
@@ -235,7 +235,9 @@ async function renderFoot(silent) {
   }
   if (state.tab !== 'foot' || offset !== state.dayOffset) return false;
   if (data.failedAll) {
-    content.innerHTML = emptyBox('📡', t('foot.err'), t('err.sub')) + `<div class="retry"><button class="btn" data-retry>${esc(t('ui.retry'))}</button></div>`;
+    content.innerHTML = data.blockedUntil
+      ? emptyBox('⏳', t('err.blocked'), t('err.blockedSub', { time: fmtTime(data.blockedUntil) }))
+      : emptyBox('📡', t('foot.err'), t('err.sub')) + `<div class="retry"><button class="btn" data-retry>${esc(t('ui.retry'))}</button></div>`;
     return false;
   }
   state.lastFoot = data;
@@ -261,7 +263,10 @@ async function renderF1(silent) {
   const [res, stand] = await Promise.allSettled([fetchF1(), fetchF1Standings()]);
   if (state.tab !== 'f1') return false;
   if (res.status !== 'fulfilled') {
-    content.innerHTML = emptyBox('📡', t('f1.err'), t('err.sub'));
+    const until = res.reason?.blockedUntil;
+    content.innerHTML = until
+      ? emptyBox('⏳', t('err.blocked'), t('err.blockedSub', { time: fmtTime(until) }))
+      : emptyBox('📡', t('f1.err'), t('err.sub'));
     return false;
   }
   const { current, next, round, total } = res.value;
