@@ -63,11 +63,11 @@ Extension Chrome qui affiche les résultats du jour en un clic sur son icône : 
 
 1. Téléchargez le dépôt (bouton **Code → Download ZIP**) et décompressez-le, ou clonez-le :
    ```
-   git clone https://github.com/Dyslate/scores-du-jour.git
+   git clone https://github.com/Dyslate/result_of_sports.git
    ```
 2. Ouvrez `chrome://extensions` dans Chrome.
 3. Activez le **Mode développeur** (en haut à droite).
-4. Cliquez sur **Charger l'extension non empaquetée** et choisissez le dossier `scores-du-jour`.
+4. Cliquez sur **Charger l'extension non empaquetée** et choisissez le dossier `result_of_sports`.
 5. Épinglez l'extension (icône puzzle → punaise) puis cliquez dessus.
 
 Chrome 123 ou plus récent est nécessaire.
