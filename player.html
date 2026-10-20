@@ -7,14 +7,19 @@
   embeds this https page instead, and this page embeds the player, so YouTube sees a normal
   website as the embedder.
 
+  It also listens to the player (YouTube's postMessage protocol, enablejsapi=1) and tells the
+  extension when a video can't be played here, e.g. when its owner disabled embedding
+  (errors 101 / 150), so the extension can move on to another video.
+
   Usage: player.html?v=VIDEO_ID  (11-character YouTube id, anything else is ignored)
+  Messages to the parent window: { type: 'sdj-relay', state: 'loaded' | 'ready' | 'error', code? }
 -->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; frame-src https://www.youtube-nocookie.com https://www.youtube.com; style-src 'unsafe-inline'; script-src 'sha256-sSaFey/f51+0tVQrve306TTJuhlL+6AwSGASykaT1BM='" />
+        content="default-src 'none'; frame-src https://www.youtube-nocookie.com https://www.youtube.com; style-src 'unsafe-inline'; script-src 'sha256-AXdwzDyEsr1v06vT83RNArSyb44Xw4217i1AYqnjR4Y='" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <title>Player</title>
   <style>
@@ -27,20 +32,53 @@
   <p id="msg">…</p>
   <script>
     (function () {
+      var YT = 'https://www.youtube-nocookie.com';
       var id = new URLSearchParams(location.search).get('v') || '';
+      var tell = function (state, code) {
+        if (window.parent !== window) window.parent.postMessage({ type: 'sdj-relay', state: state, code: code, v: id }, '*');
+      };
       if (!/^[\w-]{11}$/.test(id)) {
         document.getElementById('msg').textContent = 'Invalid video id';
+        tell('error', 'invalid');
         return;
       }
       var f = document.createElement('iframe');
-      f.src = 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1&rel=0&modestbranding=1&playsinline=1';
+      f.src = YT + '/embed/' + id + '?autoplay=1&rel=0&modestbranding=1&playsinline=1&enablejsapi=1&origin=' + encodeURIComponent(location.origin);
       f.title = 'YouTube video player';
       f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
       f.allowFullscreen = true;
       f.referrerPolicy = 'strict-origin-when-cross-origin';
       document.body.replaceChildren(f);
-      // Tell the extension the relay is up (it falls back to a pop-out window otherwise).
-      if (window.parent !== window) window.parent.postMessage({ type: 'sdj-relay', ok: true }, '*');
+      tell('loaded');
+
+      // YouTube player protocol: say we listen, then the player reports onReady / onError.
+      var done = false;
+      var tries = 0;
+      var ping = function () {
+        if (done || ++tries > 20) return;
+        try {
+          f.contentWindow.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), YT);
+        } catch (e) {}
+        setTimeout(ping, 400);
+      };
+      f.addEventListener('load', ping);
+      window.addEventListener('message', function (e) {
+        if (e.origin !== YT || e.source !== f.contentWindow) return;
+        var d;
+        try {
+          d = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+        } catch (err) {
+          return;
+        }
+        if (!d || typeof d !== 'object') return;
+        if (d.event === 'onReady' || d.event === 'initialDelivery') {
+          if (!done) tell('ready');
+          done = true;
+        } else if (d.event === 'onError') {
+          done = true;
+          tell('error', d.info);
+        }
+      });
     })();
   </script>
 </body>
