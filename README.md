@@ -97,7 +97,7 @@ Requires Chrome 123 or later.
 
 None of these require an API key, but they are not officially documented and may change. No free source publishes live GT3 race results, so the GT3 section is limited to the calendar.
 
-Inline highlights rely on YouTube embeds: some broadcasters disable embedding on their videos, in which case the player shows a message and the **Watch on YouTube** button opens the video directly. If you have never accepted YouTube's cookie banner in Chrome, the search may be blocked by the consent page; open youtube.com once to accept it.
+Inline highlights rely on YouTube embeds. YouTube rejects embeds from pages that don't send an http(s) `Referer` (error 153), and extension pages are `chrome-extension://`, so the extension uses a `declarativeNetRequest` rule (`src/embed.js`) to set the Referer on its own player iframe only; other sites are not affected. Some broadcasters also disable embedding on their videos: use **Pop-out** (small Chrome window) or **Watch on YouTube** in that case. If you have never accepted YouTube's cookie banner in Chrome, the search may be blocked by the consent page; open youtube.com once to accept it.
 
 ## Project structure
 
@@ -112,6 +112,7 @@ background.js          Service worker: badge and notifications
 src/api.js             API calls and data normalisation
 src/render.js          Shared HTML rendering (popup + page)
 src/i18n.js            English / French strings
+src/embed.js           Referer rule for YouTube embeds + pop-out window
 src/config.js          Competitions, palettes and default settings
 icons/                 Extension icons
 docs/                  README screenshots

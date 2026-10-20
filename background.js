@@ -2,6 +2,7 @@
 import { fetchFootball, fetchF1 } from './src/api.js';
 import { loadSettings, isFavTeam, FOOT_LEAGUES } from './src/config.js';
 import { t, setLang, localName } from './src/i18n.js';
+import { ensureEmbedReferer } from './src/embed.js';
 
 const ALARM = 'refresh';
 
@@ -97,6 +98,7 @@ function ensureAlarm() {
 
 chrome.runtime.onInstalled.addListener(() => {
   ensureAlarm();
+  ensureEmbedReferer();
   tick();
 });
 chrome.runtime.onStartup.addListener(() => {

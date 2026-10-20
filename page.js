@@ -3,6 +3,7 @@
 import { fetchFootball, fetchF1, fetchGT, fetchStandings, fetchF1Standings, searchYouTube } from './src/api.js';
 import { FOOT_LEAGUES, GT_LEAGUES, loadSettings, saveSettings, isFavTeam } from './src/config.js';
 import { t, setLang, lang, localName, applyI18n } from './src/i18n.js';
+import { ensureEmbedReferer, openPopout } from './src/embed.js';
 import {
   esc, norm, img, fmtTime, fmtDay, relDays, dayFromOffset, dayLabel, dayPhrase, emptyBox, skeleton, flag,
   THEME_ICONS, sessionName, defaultSession, leagueCard, standingsHtml, f1GpCard, f1NextCard, f1StandingsCard, gtCard,
@@ -291,6 +292,7 @@ function videoInfo(v, searchUrl) {
   return `<div class="vid-info">
     <div><div class="vid-title">${esc(v.title)}</div><div class="vid-meta">${esc(meta)}</div></div>
     <div class="vid-actions">
+      <button class="pill-btn" data-popout="${esc(v.id)}">${esc(t('vid.popout'))}</button>
       <a class="pill-btn yt" href="https://www.youtube.com/watch?v=${esc(encodeURIComponent(v.id))}" target="_blank" rel="noopener">${esc(t('vid.watchOn'))}</a>
       <a class="pill-btn" href="${esc(searchUrl)}" target="_blank" rel="noopener">${esc(t('vid.search'))}</a>
     </div>
@@ -307,7 +309,8 @@ async function openVideo(query, label) {
 
   let videos = [];
   try {
-    videos = await searchYouTube(query, { max: 5, hl: lang() });
+    // Make sure the Referer rule is in place before the player iframe loads (see src/embed.js).
+    [videos] = await Promise.all([searchYouTube(query, { max: 5, hl: lang() }), ensureEmbedReferer()]);
   } catch {
     videos = null;
   }
@@ -331,6 +334,10 @@ async function openVideo(query, label) {
     body.innerHTML =
       playerHtml(v) + videoInfo(v, searchUrl) + (others ? `<h3 class="vid-h">${esc(t('vid.others'))}</h3><div class="vid-list">${others}</div>` : '');
     body.querySelectorAll('[data-vid]').forEach((b) => b.addEventListener('click', () => show(+b.dataset.vid)));
+    body.querySelector('[data-popout]')?.addEventListener('click', (e) => {
+      openPopout(e.currentTarget.dataset.popout);
+      $('#dlg-video').close();
+    });
   };
   show(0);
 }

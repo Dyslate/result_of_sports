@@ -4,7 +4,7 @@
   "short_name": "__MSG_appShortName__",
   "description": "__MSG_appDesc__",
   "default_locale": "en",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "action": {
     "default_title": "__MSG_appName__",
     "default_popup": "popup.html",
@@ -25,11 +25,17 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "permissions": ["storage", "alarms", "notifications"],
+  "permissions": [
+    "storage",
+    "alarms",
+    "notifications",
+    "declarativeNetRequestWithHostAccess"
+  ],
   "host_permissions": [
     "https://site.api.espn.com/*",
     "https://www.thesportsdb.com/*",
-    "https://www.youtube.com/*"
+    "https://www.youtube.com/*",
+    "https://www.youtube-nocookie.com/*"
   ],
   "minimum_chrome_version": "123"
 }
