@@ -1,0 +1,47 @@
+<!doctype html>
+<!--
+  YouTube relay for the "Today's Scores" extension, served by GitHub Pages.
+
+  YouTube's embedded player refuses to run (error 153) when the page embedding it has no
+  http(s) address, which is the case of extension pages (chrome-extension://). The extension
+  embeds this https page instead, and this page embeds the player, so YouTube sees a normal
+  website as the embedder.
+
+  Usage: player.html?v=VIDEO_ID  (11-character YouTube id, anything else is ignored)
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; frame-src https://www.youtube-nocookie.com https://www.youtube.com; style-src 'unsafe-inline'; script-src 'sha256-sSaFey/f51+0tVQrve306TTJuhlL+6AwSGASykaT1BM='" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <title>Player</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; color: #cfd6db; font: 600 15px system-ui, sans-serif; }
+    iframe { position: fixed; inset: 0; width: 100%; height: 100%; border: 0; }
+    p { position: fixed; inset: 0; display: grid; place-items: center; margin: 0; }
+  </style>
+</head>
+<body>
+  <p id="msg">…</p>
+  <script>
+    (function () {
+      var id = new URLSearchParams(location.search).get('v') || '';
+      if (!/^[\w-]{11}$/.test(id)) {
+        document.getElementById('msg').textContent = 'Invalid video id';
+        return;
+      }
+      var f = document.createElement('iframe');
+      f.src = 'https://www.youtube-nocookie.com/embed/' + id + '?autoplay=1&rel=0&modestbranding=1&playsinline=1';
+      f.title = 'YouTube video player';
+      f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+      f.allowFullscreen = true;
+      f.referrerPolicy = 'strict-origin-when-cross-origin';
+      document.body.replaceChildren(f);
+      // Tell the extension the relay is up (it falls back to a pop-out window otherwise).
+      if (window.parent !== window) window.parent.postMessage({ type: 'sdj-relay', ok: true }, '*');
+    })();
+  </script>
+</body>
+</html>
