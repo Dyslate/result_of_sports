@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Scores du jour",
+  "short_name": "Scores",
+  "version": "1.0.0",
+  "description": "Les résultats du jour en un clic : football en direct, F1 et GT3. Thèmes personnalisables et notifications de but.",
+  "action": {
+    "default_title": "Scores du jour",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "permissions": ["storage", "alarms", "notifications"],
+  "host_permissions": [
+    "https://site.api.espn.com/*",
+    "https://www.thesportsdb.com/*"
+  ],
+  "minimum_chrome_version": "123"
+}
