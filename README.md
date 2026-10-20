@@ -105,9 +105,21 @@ None of these require an API key, but they are not officially documented and may
 
 To stay polite with these APIs, responses are cached in `chrome.storage.session`, shared by the popup, the page and the background worker (cleared when the browser closes): 30 s when the period includes today, 6 h for past days, 15 min for future fixtures, 10 min for tables, 1 h for the GT3 calendar and video searches. Requests are limited to 4 at a time and retried on errors; the refresh button bypasses the cache.
 
-If ESPN answers 403 or 429 (it throttles an IP that sends too many requests), the extension stops calling it for 5 minutes, then 10, 20, 40 and 60 minutes if the block persists, shows when it will try again, and serves cached data meanwhile. Background polling also adapts: every minute while something is live, every 2 minutes just before a kick-off, every 10 minutes otherwise. No free source publishes live GT3 race results, so the GT3 section is limited to the calendar.
+If ESPN answers 403 or 429 (it throttles an IP that sends too many requests), the extension stops calling it for 2 minutes, then 4, 8, 16 and 30 minutes if the block persists, shows when it will try again, and serves cached data meanwhile. Background polling also adapts: every minute while something is live, every 2 minutes just before a kick-off, every 10 minutes otherwise. No free source publishes live GT3 race results, so the GT3 section is limited to the calendar.
 
 Inline highlights rely on YouTube embeds. YouTube refuses to play inside pages that aren't a regular http(s) website (error 153), and extension pages are `chrome-extension://`. The extension therefore embeds a tiny relay page, [`docs/player.html`](docs/player.html), published with GitHub Pages at `https://dyslate.github.io/result_of_sports/player.html`, which embeds the player itself. If you fork the project, enable GitHub Pages on the `docs/` folder and update `PLAYER_RELAY` in `src/config.js`. Some broadcasters also disable embedding on their videos: use **Pop-out** (small Chrome window) or **Watch on YouTube** in that case. If you have never accepted YouTube's cookie banner in Chrome, the search may be blocked by the consent page; open youtube.com once to accept it.
+
+## Tests
+
+An automated suite (36 tests) loads the real extension in Chromium with simulated ESPN, TheSportsDB and YouTube responses, so it runs offline and never stresses the real APIs.
+
+```
+npm install
+npx playwright install chromium
+npm test
+```
+
+It covers the data layer (statuses, date ranges fetched day by day on match days only, cache, ESPN 403 back-off, malformed data), translations (same keys and placeholders in both languages), the popup (tabs, day navigation, search, live filter, F1 sessions, GT3, tables, language flag, themes, favourites, "Open web page"), the full-screen page (day / week / month / custom range, fast switching between them, inline highlights through the relay, tables, phone width) and the background worker (badge, goal and full-time notifications, adaptive polling). Screenshots are saved to `test-results/`.
 
 ## Project structure
 
@@ -125,7 +137,8 @@ src/i18n.js            English / French strings
 src/embed.js           Referer rule for YouTube embeds + pop-out window
 src/config.js          Competitions, palettes and default settings
 icons/                 Extension icons
-docs/                  README screenshots
+docs/                  README screenshots, YouTube relay page (player.html)
+tests/                 Automated tests (node --test + Playwright)
 ```
 
 ## License

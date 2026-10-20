@@ -43,7 +43,7 @@ async function fetchOnce(url, timeoutMs) {
 
 // When ESPN answers 403 / 429 it is throttling this IP. Every further request extends the
 // block, so all contexts (popup, page, service worker) stop calling ESPN for a while:
-// 5, 10, 20, 40 then 60 minutes on repeated blocks. Shared through chrome.storage.local.
+// 2, 4, 8, 16 then 30 minutes on repeated blocks. Shared through chrome.storage.local.
 const COOLDOWN_KEY = 'apiCooldown';
 let cooldown = { until: 0, strikes: 0 };
 let cooldownLoaded = false;
@@ -102,14 +102,27 @@ function getJSON(url, { timeoutMs = 12000 } = {}) {
     let lastErr;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const data = await withSlot(() => {
+        const data = await withSlot(async () => {
           // Re-check once a slot frees up: a sibling request may have just been throttled.
           if (isEspn(url) && cooldown.until > Date.now()) {
             const err = new Error('ESPN cooldown');
             err.blockedUntil = cooldown.until;
             throw err;
           }
-          return fetchOnce(url, timeoutMs);
+          try {
+            return await fetchOnce(url, timeoutMs);
+          } catch (e) {
+            // Record the block before releasing the slot, so queued requests see it.
+            if (isEspn(url) && (e.status === 403 || e.status === 429)) {
+              if (cooldown.until <= Date.now()) {
+                const strikes = (cooldown.strikes || 0) + 1;
+                cooldown = { strikes, until: Date.now() + Math.min(30, 2 * 2 ** (strikes - 1)) * MIN };
+                saveCooldown();
+              }
+              e.blockedUntil = cooldown.until;
+            }
+            throw e;
+          }
         });
         if (isEspn(url) && cooldown.strikes) {
           cooldown = { until: 0, strikes: 0 };
@@ -118,18 +131,9 @@ function getJSON(url, { timeoutMs = 12000 } = {}) {
         return data;
       } catch (e) {
         lastErr = e;
-        if (e.blockedUntil) break; // paused by a sibling request
-        if (isEspn(url) && (e.status === 403 || e.status === 429)) {
-          // Throttled: back off for everyone instead of retrying. Requests failing in the
-          // same wave count as one strike.
-          if (cooldown.until <= Date.now()) {
-            const strikes = (cooldown.strikes || 0) + 1;
-            cooldown = { strikes, until: Date.now() + Math.min(60, 5 * 2 ** (strikes - 1)) * MIN };
-            await saveCooldown();
-          }
-          e.blockedUntil = cooldown.until;
-          break;
-        }
+        // Throttled (this request or a sibling): back off for everyone instead of retrying.
+        // Requests failing in the same wave count as one strike.
+        if (e.blockedUntil) break;
         // Other 4xx won't get better by retrying.
         if (e.status && e.status < 500) break;
         await sleep(700 * (attempt + 1) + Math.random() * 300);
@@ -213,11 +217,11 @@ export async function clearCache() {
   }
 }
 
-/** Cache lifetime for football data: short when today is involved, long for the past. */
-function footTtl(from, to) {
+/** Cache lifetime for one day of football data (YYYYMMDD): short for today, long for the past. */
+function dayTtl(day) {
   const today = ymd(new Date());
-  if (ymd(to) < today) return 6 * 60 * MIN; // finished matches don't change
-  if (ymd(from) > today) return 15 * MIN; // fixtures only
+  if (day < today) return 6 * 60 * MIN; // finished matches don't change
+  if (day > today) return 15 * MIN; // fixtures only
   return 30 * 1000; // live scores
 }
 
@@ -322,12 +326,61 @@ export async function fetchFootball(date, leagueIds) {
   return fetchFootballRange(date, date, leagueIds);
 }
 
-/** Matches between two dates (inclusive) for a list of competitions: one request per competition. */
+/** One competition on one ESPN day (YYYYMMDD), normalised and cached. */
+function leagueDay(id, day) {
+  return cached(`foot:${id}:${day}`, dayTtl(day), async () =>
+    normalizeLeague(id, await getJSON(`${ESPN}/soccer/${id}/scoreboard?dates=${day}`))
+  );
+}
+
+/**
+ * Days with matches for a competition (Set of YYYYMMDD), from the scoreboard's calendar
+ * whitelist, or null when ESPN doesn't provide one. Cached 12 h.
+ */
+async function leagueCalendar(id) {
+  const days = await cached(`cal:${id}`, 12 * 60 * MIN, async () => {
+    const lg = (await getJSON(`${ESPN}/soccer/${id}/scoreboard`))?.leagues?.[0];
+    if (!lg?.calendarIsWhitelist || !Array.isArray(lg.calendar)) return null;
+    return lg.calendar
+      .map((c) => (typeof c === 'string' ? c : c?.startDate ?? c?.value ?? ''))
+      .map((s) => s.slice(0, 10).replace(/-/g, ''))
+      .filter((s) => /^\d{8}$/.test(s));
+  });
+  return days ? new Set(days) : null;
+}
+
+/**
+ * Matches between two dates (inclusive) for a list of competitions.
+ * ESPN's soccer API rejects date ranges, so a range is fetched day by day, but only on the
+ * days each competition actually plays (its calendar), and every day is cached on its own.
+ */
 export async function fetchFootballRange(from, to, leagueIds) {
-  const span = ymd(from) === ymd(to) ? ymd(from) : `${ymd(from)}-${ymd(to)}`;
-  const ttl = footTtl(from, to);
+  const days = [];
+  for (let d = new Date(from); ymd(d) <= ymd(to); d.setDate(d.getDate() + 1)) days.push(ymd(d));
+
   const results = await Promise.allSettled(
-    leagueIds.map((id) => cached(`foot:${id}:${span}`, ttl, async () => normalizeLeague(id, await getJSON(`${ESPN}/soccer/${id}/scoreboard?dates=${span}&limit=400`))))
+    leagueIds.map(async (id) => {
+      let want = days;
+      if (days.length > 1) {
+        const cal = await leagueCalendar(id).catch((e) => {
+          if (e.blockedUntil) throw e;
+          return null;
+        });
+        if (cal) want = days.filter((d) => cal.has(d));
+      }
+      if (!want.length) return null;
+      const parts = await Promise.allSettled(want.map((d) => leagueDay(id, d)));
+      const ok = parts.filter((p) => p.status === 'fulfilled').map((p) => p.value);
+      if (!ok.length) throw parts[0].reason;
+      const found = ok.filter(Boolean);
+      if (!found.length) return null;
+      const seen = new Set();
+      const events = found
+        .flatMap((lg) => lg.events)
+        .filter((e) => !seen.has(e.id) && seen.add(e.id))
+        .sort((a, b) => new Date(a.date) - new Date(b.date));
+      return { ...found[0], events };
+    })
   );
   const leagues = [];
   const errors = [];

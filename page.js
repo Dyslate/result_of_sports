@@ -93,7 +93,12 @@ function shiftRange(n) {
     r.anchor = noon(new Date());
   } else if (r.mode === 'day') r.anchor = new Date(r.anchor.getTime() + n * DAY);
   else if (r.mode === 'week') r.anchor = new Date(r.anchor.getTime() + 7 * n * DAY);
-  else if (r.mode === 'month') r.anchor = noon(new Date(r.anchor.getFullYear(), r.anchor.getMonth() + n, 1));
+  else if (r.mode === 'month') {
+    const first = noon(new Date(r.anchor.getFullYear(), r.anchor.getMonth() + n, 1));
+    const today = noon(new Date());
+    // Stay on today when coming back to the current month, so Day / Week land on today.
+    r.anchor = first.getFullYear() === today.getFullYear() && first.getMonth() === today.getMonth() ? today : first;
+  }
   else {
     const len = Math.round((r.to - r.from) / DAY) + 1;
     r.from = new Date(r.from.getTime() + n * len * DAY);
@@ -106,12 +111,13 @@ function shiftRange(n) {
 
 function setRangeMode(mode) {
   const r = state.range;
+  if (mode === r.mode) return;
+  // The custom range starts from what is on screen. Leaving it keeps the previous anchor,
+  // so Day / Week / Month come back to the period you were looking at before.
   if (mode === 'custom') {
-    const { from, to } = rangeBounds(); // start from what is on screen
+    const { from, to } = rangeBounds();
     r.from = from;
     r.to = to;
-  } else if (r.mode === 'custom') {
-    r.anchor = r.from ?? noon(new Date());
   }
   r.mode = mode;
   paintRangeControls();
@@ -278,8 +284,9 @@ function paintFoot() {
         .sort((a, b) => favMatch(b) - favMatch(a)),
     }))
     .filter((lg) => lg.events.length)
-    .map((lg) => ({ ...lg, fav: lg.events.some(favMatch) }))
-    .sort((a, b) => b.fav - a.fav || order.indexOf(a.id) - order.indexOf(b.id));
+    .map((lg) => ({ ...lg, fav: lg.events.some(favMatch), live: lg.events.some((e) => e.status.live) }))
+    // Favourites first, then competitions with a live match, then the usual order.
+    .sort((a, b) => b.fav - a.fav || b.live - a.live || order.indexOf(a.id) - order.indexOf(b.id));
 
   const total = lgs.reduce((n, lg) => n + lg.events.length, 0);
   $('#foot-count').textContent = total ? String(total) : '';
@@ -462,6 +469,28 @@ function playerHtml(v) {
   return `<div class="player"><iframe src="${esc(src)}" title="${esc(v.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
 }
 
+// The relay page posts { type: 'sdj-relay' } once loaded. Without it after a few seconds
+// (GitHub Pages not enabled yet, offline…), fall back to a direct embed, which gets the
+// relay's origin as Referer through the rule in src/embed.js.
+let relayTimer;
+function watchRelay(body, v) {
+  clearTimeout(relayTimer);
+  const origin = new URL(PLAYER_RELAY).origin;
+  const onMsg = (e) => {
+    if (e.origin === origin && e.data?.type === 'sdj-relay') {
+      clearTimeout(relayTimer);
+      window.removeEventListener('message', onMsg);
+    }
+  };
+  window.addEventListener('message', onMsg);
+  relayTimer = setTimeout(() => {
+    window.removeEventListener('message', onMsg);
+    const frame = body.querySelector('.player iframe');
+    if (!frame || !$('#dlg-video').open) return;
+    frame.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(v.id)}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
+  }, 5000);
+}
+
 function videoInfo(v, searchUrl) {
   const meta = [v.channel, v.views, v.published, v.length].filter(Boolean).join(' · ');
   return `<div class="vid-info">
@@ -509,6 +538,7 @@ async function openVideo(query, label) {
     body.innerHTML =
       playerHtml(v) + videoInfo(v, searchUrl) + (others ? `<h3 class="vid-h">${esc(t('vid.others'))}</h3><div class="vid-list">${others}</div>` : '');
     body.querySelectorAll('[data-vid]').forEach((b) => b.addEventListener('click', () => show(+b.dataset.vid)));
+    watchRelay(body, v);
     body.querySelector('[data-popout]')?.addEventListener('click', (e) => {
       openPopout(e.currentTarget.dataset.popout);
       $('#dlg-video').close();

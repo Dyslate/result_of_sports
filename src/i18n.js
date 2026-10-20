@@ -475,7 +475,14 @@ let current = 'fr';
 /** 'auto' → browser language (fr if it starts with "fr", otherwise en). */
 export function resolveLang(setting) {
   if (setting === 'fr' || setting === 'en') return setting;
-  const nav = (globalThis.navigator?.language || 'fr').toLowerCase();
+  // chrome.i18n follows Chrome's UI language everywhere, including the service worker.
+  let ui = '';
+  try {
+    ui = globalThis.chrome?.i18n?.getUILanguage?.() ?? '';
+  } catch {
+    /* outside the extension */
+  }
+  const nav = (ui || globalThis.navigator?.language || 'fr').toLowerCase();
   return nav.startsWith('fr') ? 'fr' : 'en';
 }
 

@@ -1,0 +1,14 @@
+{
+  "name": "result-of-sports",
+  "private": true,
+  "type": "module",
+  "description": "Today's Scores Chrome extension: automated tests",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"tests/*.test.js\"",
+    "test:unit": "node --test tests/unit.test.js",
+    "test:e2e": "node --test --test-concurrency=1 tests/popup.test.js tests/page.test.js tests/resilience.test.js"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1"
+  }
+}

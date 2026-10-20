@@ -186,8 +186,9 @@ function paintFoot() {
         .sort((a, b) => favMatch(b) - favMatch(a)),
     }))
     .filter((lg) => lg.events.length)
-    .map((lg) => ({ ...lg, fav: lg.events.some(favMatch) }))
-    .sort((a, b) => b.fav - a.fav || order.indexOf(a.id) - order.indexOf(b.id));
+    .map((lg) => ({ ...lg, fav: lg.events.some(favMatch), live: lg.events.some((e) => e.status.live) }))
+    // Favourites first, then competitions with a live match, then the usual order.
+    .sort((a, b) => b.fav - a.fav || b.live - a.live || order.indexOf(a.id) - order.indexOf(b.id));
 
   const liveCount = data.leagues.reduce((n, lg) => n + lg.events.filter((e) => e.status.live).length, 0);
   if (state.dayOffset === 0) setTabCount('foot', liveCount);
@@ -214,7 +215,13 @@ function paintFoot() {
 
   const opts = { favorites: state.settings.favorites, flashIds };
   const warn = data.errors.length ? `<div class="warn">${esc(t('foot.unavailable', { n: data.errors.length }))}</div>` : '';
+  const open = $$('.match.open').map((m) => m.dataset.id); // keep expanded matches open
   content.innerHTML = warn + lgs.map((lg) => leagueCard(lg, opts)).join('') + stamp();
+  for (const id of open) {
+    const m = $(`.match[data-id="${CSS.escape(id)}"]`);
+    m?.classList.add('open');
+    m?.querySelector('.match-main').setAttribute('aria-expanded', 'true');
+  }
   return liveCount > 0;
 }
 

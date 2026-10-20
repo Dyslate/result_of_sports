@@ -14,7 +14,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'none'; frame-src https://www.youtube-nocookie.com https://www.youtube.com; style-src 'unsafe-inline'; script-src 'sha256-UnOPNz8c3ilZjL3DgT56Pxt+w/CpEMFwyt8X0BN3H2o='" />
+        content="default-src 'none'; frame-src https://www.youtube-nocookie.com https://www.youtube.com; style-src 'unsafe-inline'; script-src 'sha256-sSaFey/f51+0tVQrve306TTJuhlL+6AwSGASykaT1BM='" />
   <meta name="referrer" content="strict-origin-when-cross-origin" />
   <title>Player</title>
   <style>
@@ -39,6 +39,8 @@
       f.allowFullscreen = true;
       f.referrerPolicy = 'strict-origin-when-cross-origin';
       document.body.replaceChildren(f);
+      // Tell the extension the relay is up (it falls back to a pop-out window otherwise).
+      if (window.parent !== window) window.parent.postMessage({ type: 'sdj-relay', ok: true }, '*');
     })();
   </script>
 </body>

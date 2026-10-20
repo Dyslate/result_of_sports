@@ -1,7 +1,9 @@
-// YouTube embeds refuse to play (error 153) when the embedding page doesn't send an
-// http(s) Referer: extension pages are chrome-extension:// so YouTube can't identify them.
-// This declarativeNetRequest rule sets a Referer on the player iframe request, and only
-// for iframes created by this extension's own pages (initiatorDomains = extension id).
+// YouTube embeds refuse to play when the embedding page has no http(s) Referer (error 153,
+// extension pages are chrome-extension://) or claims to be youtube.com (error 152).
+// The player normally goes through the https relay page (PLAYER_RELAY). As a fallback, this
+// declarativeNetRequest rule gives direct embeds the relay's origin as Referer, only for
+// iframes created by this extension's own pages (initiatorDomains = extension id).
+import { PLAYER_RELAY } from './config.js';
 
 const RULE_ID = 153;
 
@@ -16,7 +18,7 @@ export async function ensureEmbedReferer() {
           priority: 1,
           action: {
             type: 'modifyHeaders',
-            requestHeaders: [{ header: 'referer', operation: 'set', value: 'https://www.youtube.com/' }],
+            requestHeaders: [{ header: 'referer', operation: 'set', value: new URL(PLAYER_RELAY).origin + '/' }],
           },
           condition: {
             requestDomains: ['youtube-nocookie.com', 'youtube.com'],
