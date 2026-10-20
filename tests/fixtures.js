@@ -138,6 +138,9 @@ const f1Standings = () => ({ children: [{ name: 'Driver Standings', standings: {
 const day = (o) => { const d = at(o); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
 const gtEv = (id, name, offset, venue, country, league) => ({ idEvent: id, strEvent: name, dateEvent: day(offset), strTime: '00:00:00', strVenue: venue, strCountry: country, strSeason: '2026', strLeague: league });
 
+/** Video whose owner forbids playback outside YouTube (like beIN SPORTS highlights). */
+export const BLOCKED_VIDEO = 'vidAAAAAAA1';
+
 export const YT_VIDEOS = [
   ['vidAAAAAAA1', 'Résumé : PSG renverse le Barça !', 'CANAL+ Sport', '14:42'],
   ['vidAAAAAAA2', 'PSG - Barcelone : les buts', 'RMC Sport', '6:10'],
@@ -151,7 +154,8 @@ const ytData = () => ({ contents: { twoColumnSearchResultsRenderer: { primaryCon
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=', 'base64');
 
 /**
- * Builds a response for `url`. `mode`: 'ok' | 'throttle' (ESPN answers 403) | 'fail-eng' (Premier League 500).
+ * Builds a response for `url`. `mode`: 'ok' | 'throttle' (ESPN answers 403) | 'fail-eng' (Premier League 500)
+ * | 'all-blocked' (every YouTube video refuses to play outside YouTube).
  * Returns { status, contentType, body } or null to let the request through (local files).
  */
 export function respond(url, mode = 'ok') {
@@ -188,6 +192,16 @@ export function respond(url, mode = 'ok') {
     return { status: 200, contentType: 'text/html', body: `<html><script>var ytInitialData = ${JSON.stringify(ytData())};</script></html>` };
   }
   if (u.hostname === 'dyslate.github.io') return { status: 200, contentType: 'text/html', body: RELAY_HTML };
+  if (u.hostname.endsWith('youtube-nocookie.com') && u.pathname.startsWith('/embed/')) {
+    // Fake player speaking YouTube's postMessage protocol. Like beIN SPORTS videos, the first
+    // result refuses to play outside YouTube (error 150); in 'all-blocked' mode, every video does.
+    const id = u.pathname.split('/').pop();
+    const blocked = mode === 'all-blocked' || id === BLOCKED_VIDEO;
+    const reply = JSON.stringify(blocked ? { event: 'onError', info: 150 } : { event: 'onReady' });
+    return { status: 200, contentType: 'text/html', body: `<body style="background:#000;color:#fff">${blocked ? 'blocked' : 'playing'} ${id}<script>
+      addEventListener('message', (e) => { try { if (JSON.parse(e.data).event === 'listening') e.source.postMessage(${JSON.stringify(reply)}, e.origin); } catch {} });
+    </script></body>` };
+  }
   if (u.hostname.endsWith('youtube-nocookie.com') || u.hostname === 'www.youtube.com') {
     return { status: 200, contentType: 'text/html', body: '<body style="background:#000;color:#fff">player</body>' };
   }

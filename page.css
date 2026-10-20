@@ -206,3 +206,17 @@ body.page .gp-card .grid-res .res:nth-child(odd) { border-right: 1px solid var(-
   .vid-list { grid-template-columns: 1fr; }
   .vid-info { flex-direction: column; }
 }
+
+/* blocked videos */
+.vid-note {
+  margin-bottom: 10px; padding: 8px 12px; border-radius: calc(var(--radius) * .75);
+  background: var(--surface-2); color: var(--muted); font-size: 12px; font-weight: 600;
+}
+.vid-alt.is-blocked { opacity: .55; }
+.player.blocked { display: grid; place-items: center; background: radial-gradient(circle at 70% 40%, #2a1a2e, #101214 70%); }
+.blocked-in { max-width: 520px; padding: 24px; text-align: center; color: #e8ecef; display: grid; gap: 10px; justify-items: center; }
+.blocked-in strong { font-size: 18px; }
+.blocked-in p { margin: 0 0 6px; color: #b8c0c6; line-height: 1.5; }
+.blocked-in .pill-btn { background: #1d2226; border-color: #2c3338; color: #e8ecef; }
+.blocked-in .pill-btn.yt { color: #ff6b63; }
+.vid-actions.center { justify-content: center; flex-wrap: wrap; margin-top: 0; }

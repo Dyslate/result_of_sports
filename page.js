@@ -469,26 +469,33 @@ function playerHtml(v) {
   return `<div class="player"><iframe src="${esc(src)}" title="${esc(v.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
 }
 
-// The relay page posts { type: 'sdj-relay' } once loaded. Without it after a few seconds
-// (GitHub Pages not enabled yet, offline…), fall back to a direct embed, which gets the
-// relay's origin as Referer through the rule in src/embed.js.
+// Messages from the relay page (docs/player.html): 'loaded', then 'ready' or 'error'.
+// Without any message after a few seconds (relay offline…), fall back to a direct embed,
+// which gets the relay's origin as Referer through the rule in src/embed.js.
 let relayTimer;
-function watchRelay(body, v) {
+let relayListener;
+function watchRelay(v, onBlocked) {
   clearTimeout(relayTimer);
+  if (relayListener) window.removeEventListener('message', relayListener);
   const origin = new URL(PLAYER_RELAY).origin;
-  const onMsg = (e) => {
-    if (e.origin === origin && e.data?.type === 'sdj-relay') {
-      clearTimeout(relayTimer);
-      window.removeEventListener('message', onMsg);
-    }
+  relayListener = (e) => {
+    if (e.origin !== origin || e.data?.type !== 'sdj-relay' || e.data.v !== v.id) return;
+    clearTimeout(relayTimer);
+    // 100: removed or private, 101 / 150: the owner disabled playback on other sites.
+    if (e.data.state === 'error') onBlocked(e.data.code);
   };
-  window.addEventListener('message', onMsg);
+  window.addEventListener('message', relayListener);
   relayTimer = setTimeout(() => {
-    window.removeEventListener('message', onMsg);
-    const frame = body.querySelector('.player iframe');
+    const frame = $('#video-body .player iframe');
     if (!frame || !$('#dlg-video').open) return;
     frame.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(v.id)}?autoplay=1&rel=0&modestbranding=1&playsinline=1`;
-  }, 5000);
+  }, 6000);
+}
+
+function stopRelayWatch() {
+  clearTimeout(relayTimer);
+  if (relayListener) window.removeEventListener('message', relayListener);
+  relayListener = null;
 }
 
 function videoInfo(v, searchUrl) {
@@ -500,8 +507,20 @@ function videoInfo(v, searchUrl) {
       <a class="pill-btn yt" href="https://www.youtube.com/watch?v=${esc(encodeURIComponent(v.id))}" target="_blank" rel="noopener">${esc(t('vid.watchOn'))}</a>
       <a class="pill-btn" href="${esc(searchUrl)}" target="_blank" rel="noopener">${esc(t('vid.search'))}</a>
     </div>
-  </div>
-  <p class="hint">${esc(t('vid.embedHint'))}</p>`;
+  </div>`;
+}
+
+/** Card shown instead of the player when every result is blocked outside YouTube. */
+function blockedCard(v, searchUrl, channels) {
+  return `<div class="player blocked"><div class="blocked-in">
+    <strong>${esc(t('vid.allBlocked'))}</strong>
+    <p>${esc(t('vid.allBlockedSub', { who: channels.join(', ') }))}</p>
+    <div class="vid-actions center">
+      <button class="btn" data-popout="${esc(v.id)}">${esc(t('vid.popout'))}</button>
+      <a class="pill-btn yt" href="https://www.youtube.com/watch?v=${esc(encodeURIComponent(v.id))}" target="_blank" rel="noopener">${esc(t('vid.watchOn'))}</a>
+      <a class="pill-btn" href="${esc(searchUrl)}" target="_blank" rel="noopener">${esc(t('vid.search'))}</a>
+    </div>
+  </div></div>`;
 }
 
 async function openVideo(query, label) {
@@ -514,7 +533,7 @@ async function openVideo(query, label) {
   let videos = [];
   try {
     // Make sure the Referer rule is in place before the player iframe loads (see src/embed.js).
-    [videos] = await Promise.all([searchYouTube(query, { max: 5, hl: lang() }), ensureEmbedReferer()]);
+    [videos] = await Promise.all([searchYouTube(query, { max: 6, hl: lang() }), ensureEmbedReferer()]);
   } catch {
     videos = null;
   }
@@ -526,22 +545,55 @@ async function openVideo(query, label) {
     return;
   }
 
-  const show = (i) => {
-    const v = videos[i];
-    const others = videos
+  const blocked = new Set(); // indexes of videos whose owner forbids playback here
+  const bind = () => {
+    body.querySelectorAll('[data-vid]').forEach((b) => b.addEventListener('click', () => show(+b.dataset.vid, true)));
+    body.querySelectorAll('[data-popout]').forEach((b) =>
+      b.addEventListener('click', (e) => {
+        openPopout(e.currentTarget.dataset.popout);
+        $('#dlg-video').close();
+      })
+    );
+  };
+  const list = (current) =>
+    videos
       .map((o, j) =>
-        j === i
+        j === current
           ? ''
-          : `<button class="vid-alt" data-vid="${j}">${img(o.thumb, o.title)}<span><b>${esc(o.title)}</b><small>${esc([o.channel, o.length].filter(Boolean).join(' · '))}</small></span></button>`
+          : `<button class="vid-alt${blocked.has(j) ? ' is-blocked' : ''}" data-vid="${j}">${img(o.thumb, o.title)}<span><b>${esc(o.title)}</b><small>${esc(
+              [o.channel, o.length, blocked.has(j) ? t('vid.blockedTag') : ''].filter(Boolean).join(' · ')
+            )}</small></span></button>`
       )
       .join('');
+
+  const show = (i, chosen = false, note = '') => {
+    const v = videos[i];
+    const others = list(i);
     body.innerHTML =
-      playerHtml(v) + videoInfo(v, searchUrl) + (others ? `<h3 class="vid-h">${esc(t('vid.others'))}</h3><div class="vid-list">${others}</div>` : '');
-    body.querySelectorAll('[data-vid]').forEach((b) => b.addEventListener('click', () => show(+b.dataset.vid)));
-    watchRelay(body, v);
-    body.querySelector('[data-popout]')?.addEventListener('click', (e) => {
-      openPopout(e.currentTarget.dataset.popout);
-      $('#dlg-video').close();
+      (note ? `<div class="vid-note">${esc(note)}</div>` : '') +
+      playerHtml(v) +
+      videoInfo(v, searchUrl) +
+      (others ? `<h3 class="vid-h">${esc(t('vid.others'))}</h3><div class="vid-list">${others}</div>` : '');
+    bind();
+    watchRelay(v, () => {
+      blocked.add(i);
+      if (!$('#dlg-video').open) return;
+      // A video picked by hand stays on screen with YouTube's own message.
+      if (chosen) {
+        body.querySelector('.vid-list')?.replaceChildren();
+        body.querySelector('.vid-list')?.insertAdjacentHTML('beforeend', list(i));
+        bind();
+        return;
+      }
+      const next = videos.findIndex((_, j) => !blocked.has(j));
+      if (next >= 0) {
+        show(next, false, t('vid.skipped', { who: v.channel || 'YouTube' }));
+      } else {
+        stopRelayWatch();
+        const channels = [...new Set(videos.map((o) => o.channel).filter(Boolean))].slice(0, 3);
+        body.innerHTML = blockedCard(videos[0], searchUrl, channels.length ? channels : ['YouTube']);
+        bind();
+      }
     });
   };
   show(0);
@@ -584,6 +636,7 @@ async function init() {
     });
   });
   $('#dlg-video').addEventListener('close', () => {
+    stopRelayWatch();
     $('#video-body').innerHTML = '';
   });
 

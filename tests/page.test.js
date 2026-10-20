@@ -145,38 +145,60 @@ test('switching Day / Week / Month / Range quickly never breaks the page', async
   await p.close();
 });
 
-test('highlights play inside the page through the https relay', async () => {
+test('highlights: blocked videos are skipped, the next one plays through the relay', async () => {
   const p = await freshPage();
   await p.click('#foot .match[data-id="1003"] .match-main');
   await p.click('#foot .match[data-id="1003"] [data-yt]');
   await p.waitForSelector('#dlg-video[open] iframe');
-  const src = await p.getAttribute('#dlg-video iframe', 'src');
-  assert.equal(src, 'https://dyslate.github.io/result_of_sports/player.html?v=vidAAAAAAA1');
-  assert.match(await p.textContent('#dlg-video .vid-title'), /PSG renverse/);
-  assert.equal(await p.$$eval('#dlg-video .vid-alt', (e) => e.length), 2, 'other videos listed');
-  // the relay answers the handshake, so the player is not replaced by the fallback
-  await sleep(5600);
-  assert.equal(await p.getAttribute('#dlg-video iframe', 'src'), src);
-  const relay = p.frames().find((f) => f.url().startsWith('https://dyslate.github.io/'));
+  // The first result refuses to play outside YouTube: the page moves on to the second one.
+  await p.waitForFunction(() => /v=vidAAAAAAA2/.test(document.querySelector('#dlg-video .player iframe')?.src ?? ''));
+  assert.equal(await p.getAttribute('#dlg-video .player iframe', 'src'), 'https://dyslate.github.io/result_of_sports/player.html?v=vidAAAAAAA2');
+  assert.match(await p.textContent('#dlg-video .vid-note'), /CANAL\+ Sport.*vidéo suivante/);
+  assert.ok(await p.$('#dlg-video .vid-alt.is-blocked[data-vid="0"]'), 'blocked video is flagged in the list');
+  assert.match(await p.textContent('#dlg-video .vid-title'), /PSG - Barcelone : les buts/);
+  // The relay embeds YouTube's player with the JS API on, and the player is not replaced later.
+  const relay = p.frames().find((f) => f.url() === 'https://dyslate.github.io/result_of_sports/player.html?v=vidAAAAAAA2');
   assert.ok(relay, 'relay frame loaded');
-  assert.match(await relay.evaluate(() => document.querySelector('iframe').src), /youtube-nocookie\.com\/embed\/vidAAAAAAA1/);
+  assert.match(await relay.evaluate(() => document.querySelector('iframe').src), /youtube-nocookie\.com\/embed\/vidAAAAAAA2\?.*enablejsapi=1/);
+  await sleep(6500);
+  assert.match(await p.getAttribute('#dlg-video .player iframe', 'src'), /dyslate\.github\.io/);
   await p.screenshot({ path: path.join(SHOTS, 'page-video.png') });
-  // another video
-  await p.click('#dlg-video .vid-alt');
-  assert.match(await p.getAttribute('#dlg-video iframe', 'src'), /v=vidAAAAAAA2/);
-  // pop-out window: check the window request (the test browser has no access to youtube.com)
+  // Picking another video by hand
+  await p.click('#dlg-video .vid-alt[data-vid="2"]');
+  assert.match(await p.getAttribute('#dlg-video .player iframe', 'src'), /v=vidAAAAAAA3/);
+  // Pop-out window: check the window request (the test browser has no access to youtube.com)
   await p.evaluate(() => {
     const create = chrome.windows.create.bind(chrome.windows);
     window.__popout = null;
     chrome.windows.create = (o) => ((window.__popout = o), create({ ...o, url: 'about:blank' }));
   });
-  await p.click('#dlg-video [data-popout]');
+  await p.click('#dlg-video .vid-actions [data-popout]');
   const opened = await p.evaluate(() => window.__popout);
-  assert.equal(opened.url, 'https://www.youtube.com/watch?v=vidAAAAAAA2');
+  assert.equal(opened.url, 'https://www.youtube.com/watch?v=vidAAAAAAA3');
   assert.equal(opened.type, 'popup');
   assert.equal(await p.$('#dlg-video[open]'), null, 'dialog closed');
   assert.equal(await p.innerHTML('#video-body'), '', 'player removed (sound stops)');
   await p.close();
+});
+
+test('highlights: when every video is YouTube-only, a clear card offers the alternatives', async () => {
+  x.setMode('all-blocked');
+  try {
+    const p = await freshPage();
+    await p.click('#foot .match[data-id="2001"] .match-main');
+    await p.click('#foot .match[data-id="2001"] [data-yt]');
+    await p.waitForSelector('#dlg-video .player.blocked', { timeout: 20000 });
+    const card = await p.textContent('#dlg-video .player.blocked');
+    assert.match(card, /ne peuvent être lues que sur YouTube/);
+    assert.match(card, /CANAL\+ Sport/);
+    assert.ok(await p.$('#dlg-video .player.blocked [data-popout]'), 'pop-out button');
+    assert.ok(await p.$('#dlg-video .player.blocked a[href^="https://www.youtube.com/watch?v=vidAAAAAAA1"]'), 'watch on YouTube');
+    assert.equal(await p.$('#dlg-video .player iframe'), null, 'no broken player left');
+    await p.screenshot({ path: path.join(SHOTS, 'page-video-blocked.png') });
+    await p.close();
+  } finally {
+    x.setMode('ok');
+  }
 });
 
 test('relay page: rejects invalid ids', async () => {
@@ -184,6 +206,7 @@ test('relay page: rejects invalid ids', async () => {
   await p.goto('https://dyslate.github.io/result_of_sports/player.html?v=%22%3E%3Cscript%3Ealert(1)%3C/script%3E');
   assert.equal(await p.$('iframe'), null);
   assert.equal(await p.textContent('#msg'), 'Invalid video id');
+  assert.equal(await p.$('iframe'), null);
   await p.close();
 });
 
