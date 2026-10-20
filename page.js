@@ -512,6 +512,24 @@ function videoInfo(v, searchUrl) {
   </div>`;
 }
 
+/** First screen for a video: its thumbnail and a choice, nothing loads until you pick. */
+function previewCard(v) {
+  const thumb = `https://i.ytimg.com/vi/${encodeURIComponent(v.id)}/hqdefault.jpg`;
+  return `<div class="player preview">
+    ${img(thumb, v.title)}
+    <div class="preview-in">
+      <button class="play-btn" data-play aria-label="${esc(t('vid.playHere'))}">
+        <svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" d="M8 5.5v13l11-6.5z"/></svg>
+      </button>
+      <div class="preview-actions">
+        <button class="btn" data-play>${esc(t('vid.playHere'))}</button>
+        <a class="pill-btn yt" href="https://www.youtube.com/watch?v=${esc(encodeURIComponent(v.id))}" target="_blank" rel="noopener">${esc(t('vid.watchOn'))}</a>
+      </div>
+      <small>${esc(t('vid.adNote'))}</small>
+    </div>
+  </div>`;
+}
+
 /** Shown in place of the player when the video's owner only allows playback on YouTube. */
 function blockedCard(v) {
   return `<div class="player blocked"><div class="blocked-in">
@@ -547,7 +565,14 @@ async function openVideo(query, label) {
   }
 
   const blocked = new Set(); // indexes of videos whose owner only allows playback on YouTube
-  const bind = () => {
+  const playing = new Set(); // indexes the user chose to play here
+  const bind = (i) => {
+    body.querySelectorAll('[data-play]').forEach((b) =>
+      b.addEventListener('click', () => {
+        playing.add(i);
+        show(i);
+      })
+    );
     body.querySelectorAll('[data-vid]').forEach((b) => b.addEventListener('click', () => show(+b.dataset.vid)));
     body.querySelectorAll('[data-popout]').forEach((b) =>
       b.addEventListener('click', (e) => {
@@ -573,14 +598,14 @@ async function openVideo(query, label) {
 
   const show = (i) => {
     const v = videos[i];
-    if (blocked.has(i)) {
+    if (blocked.has(i) || !playing.has(i)) {
       stopRelayWatch();
-      body.innerHTML = blockedCard(v) + videoInfo(v, searchUrl) + others(i);
-      bind();
+      body.innerHTML = (blocked.has(i) ? blockedCard(v) : previewCard(v)) + videoInfo(v, searchUrl) + others(i);
+      bind(i);
       return;
     }
     body.innerHTML = playerHtml(v) + videoInfo(v, searchUrl) + others(i);
-    bind();
+    bind(i);
     // If the owner forbids playback here, swap the player for a one-click "Watch on YouTube".
     watchRelay(v, () => {
       blocked.add(i);

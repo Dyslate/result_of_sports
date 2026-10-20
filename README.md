@@ -47,7 +47,7 @@ Available in **English** and **French** (follows Chrome's language, or switch wi
 **Full-screen page** ("Open web page" button, or <kbd>W</kbd> in the popup)
 - Football, F1 and GT3 side by side, with live / today / F1 / GT3 summary tiles
 - **Day / Week / Month / custom range** for football (up to 62 days), grouped by day
-- **Inline highlights**: the Highlights button plays the first YouTube result for the match right in the page, with the next results as alternatives
+- **Highlights**: the button finds the match's videos on YouTube and shows the first one's thumbnail with a choice: **Play here** (loads the YouTube player, so an ad may play first) or **Watch on YouTube**; the other results are listed below
 - League tables in a dialog, responsive down to phone width
 - Stays in sync with the popup settings (theme, language, competitions, favourites)
 
@@ -111,7 +111,7 @@ Inline highlights rely on YouTube embeds. YouTube refuses to play inside pages t
 
 ## Tests
 
-An automated suite (39 tests) loads the real extension in Chromium with simulated ESPN, TheSportsDB and YouTube responses, so it runs offline and never stresses the real APIs.
+An automated suite (40 tests) loads the real extension in Chromium with simulated ESPN, TheSportsDB and YouTube responses, so it runs offline and never stresses the real APIs.
 
 ```
 npm install

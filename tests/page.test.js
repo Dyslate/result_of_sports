@@ -145,22 +145,43 @@ test('switching Day / Week / Month / Range quickly never breaks the page', async
   await p.close();
 });
 
-test('highlights: playable video runs inside the page through the relay', async () => {
+test('highlights: a choice first, nothing loads before "Play here"', async () => {
+  const p = await freshPage();
+  await p.click('#foot .match[data-id="1003"] .match-main');
+  const before = x.requests.length;
+  await p.click('#foot .match[data-id="1003"] [data-yt]');
+  await p.waitForSelector('#dlg-video[open] .player.preview');
+  assert.equal(await p.$('#dlg-video iframe'), null, 'no player yet');
+  assert.ok(await p.$('#dlg-video .player.preview img[src*="i.ytimg.com/vi/vidAAAAAAA1/"]'), 'thumbnail shown');
+  assert.equal(await p.getAttribute('#dlg-video .player.preview a.yt', 'href'), 'https://www.youtube.com/watch?v=vidAAAAAAA1');
+  assert.equal(await p.getAttribute('#dlg-video .player.preview a.yt', 'target'), '_blank');
+  assert.match(await p.textContent('#dlg-video .player.preview'), /publicité/);
+  const loaded = x.requests.slice(before).filter((u) => /dyslate\.github\.io|youtube-nocookie\.com/.test(u));
+  assert.deepEqual(loaded, [], 'neither the relay nor YouTube player requested');
+  await p.screenshot({ path: path.join(SHOTS, 'page-video-choice.png') });
+  // another video from the list also starts with the choice
+  await p.click('#dlg-video .vid-alt[data-vid="1"]');
+  await p.waitForSelector('#dlg-video .player.preview img[src*="vidAAAAAAA2"]');
+  assert.equal(await p.$('#dlg-video iframe'), null);
+  await p.click('#dlg-video .dlg-close');
+  await p.close();
+});
+
+test('highlights: "Play here" runs the video inside the page through the relay', async () => {
   const p = await freshPage();
   await p.click('#foot .match[data-id="1003"] .match-main');
   await p.click('#foot .match[data-id="1003"] [data-yt]');
   await p.waitForSelector('#dlg-video[open] .vid-alt');
-  // pick the second result, which allows embedding
   await p.click('#dlg-video .vid-alt[data-vid="1"]');
+  await p.click('#dlg-video .play-btn');
+  await p.waitForSelector('#dlg-video .player iframe');
   assert.equal(await p.getAttribute('#dlg-video .player iframe', 'src'), 'https://dyslate.github.io/result_of_sports/player.html?v=vidAAAAAAA2');
-  await p.waitForFunction(() => [...document.querySelectorAll('iframe')].length > 0);
   await sleep(1500);
   const relay = p.frames().find((f) => f.url() === 'https://dyslate.github.io/result_of_sports/player.html?v=vidAAAAAAA2');
   assert.ok(relay, 'relay frame loaded');
-  assert.match(await relay.evaluate(() => document.querySelector('iframe').src), /youtube-nocookie\.com\/embed\/vidAAAAAAA2\?.*enablejsapi=1/);
+  assert.match(await relay.evaluate(() => document.querySelector('iframe').src), /youtube-nocookie\.com\/embed\/vidAAAAAAA2\?.*autoplay=1.*enablejsapi=1/);
   await sleep(6000);
   assert.ok(await p.$('#dlg-video .player iframe'), 'still playing, nothing replaced it');
-  assert.equal(await p.$('#dlg-video .player.blocked'), null);
   await p.screenshot({ path: path.join(SHOTS, 'page-video.png') });
   await p.click('#dlg-video .dlg-close');
   // the dialog's close event fires asynchronously, then the player is removed (sound stops)
@@ -172,11 +193,12 @@ test('highlights: a YouTube-only video shows one-click buttons, no automatic ski
   const p = await freshPage();
   await p.click('#foot .match[data-id="1003"] .match-main');
   await p.click('#foot .match[data-id="1003"] [data-yt]');
+  await p.waitForSelector('#dlg-video .player.preview');
+  await p.click('#dlg-video .preview-actions [data-play]');
   // the first result is YouTube-only (like beIN SPORTS)
   await p.waitForSelector('#dlg-video .player.blocked', { timeout: 15000 });
   assert.match(await p.textContent('#dlg-video .player.blocked'), /uniquement sur YouTube[\s\S]*CANAL\+ Sport/);
   assert.equal(await p.getAttribute('#dlg-video .player.blocked a.btn', 'href'), 'https://www.youtube.com/watch?v=vidAAAAAAA1');
-  assert.match(await p.textContent('#dlg-video .vid-title'), /PSG renverse/, 'still on the video that was asked for');
   await sleep(1500);
   assert.match(await p.textContent('#dlg-video .vid-title'), /PSG renverse/, 'no automatic jump to another video');
   assert.ok(await p.$('#dlg-video .vid-alt[data-vid="1"]'), 'other videos still offered');
