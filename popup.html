@@ -4,100 +4,116 @@
   <meta charset="utf-8" />
   <title>Scores du jour</title>
   <script src="theme-init.js"></script>
-  <link rel="stylesheet" href="popup.css" />
+  <link rel="stylesheet" href="app.css" />
 </head>
-<body>
+<body class="popup">
   <header class="top">
     <div class="brand">
       <img src="icons/icon32.png" alt="" width="20" height="20" />
-      <span class="brand-name">Scores du jour</span>
+      <span class="brand-name" data-i18n="app.title">Scores du jour</span>
     </div>
     <div class="top-actions">
-      <button id="theme-btn" class="icon-btn" title="Thème" aria-label="Changer de thème"></button>
-      <button id="refresh" class="icon-btn" title="Actualiser (R)" aria-label="Actualiser">
+      <button id="lang-btn" class="icon-btn lang-btn"></button>
+      <button id="theme-btn" class="icon-btn" data-i18n-aria="theme.button"></button>
+      <button id="refresh" class="icon-btn" data-i18n-title="ui.refresh" data-i18n-aria="ui.refresh">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
       </button>
-      <button id="settings-btn" class="icon-btn" title="Réglages" aria-label="Réglages">
+      <button id="settings-btn" class="icon-btn" data-i18n-title="ui.settings" data-i18n-aria="ui.settings">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/></svg>
       </button>
     </div>
   </header>
 
   <nav class="tabs" role="tablist">
-    <button role="tab" data-tab="foot" class="tab" title="Football (1)">Foot</button>
-    <button role="tab" data-tab="f1" class="tab" title="Formule 1 (2)">F1</button>
-    <button role="tab" data-tab="gt" class="tab" title="GT3 (3)">GT3</button>
+    <button role="tab" data-tab="foot" class="tab" data-i18n-title="tab.footTitle"><span data-i18n="tab.foot">Foot</span></button>
+    <button role="tab" data-tab="f1" class="tab" data-i18n-title="tab.f1Title"><span data-i18n="tab.f1">F1</span></button>
+    <button role="tab" data-tab="gt" class="tab" data-i18n-title="tab.gtTitle"><span data-i18n="tab.gt">GT3</span></button>
   </nav>
 
   <div id="foot-bar" class="subbar" hidden>
     <div class="daynav">
-      <button id="day-prev" class="icon-btn" aria-label="Jour précédent" title="Jour précédent (←)">
+      <button id="day-prev" class="icon-btn" data-i18n-title="day.prev" data-i18n-aria="day.prev">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
       </button>
-      <button id="day-label" class="day-label" title="Revenir à aujourd'hui"></button>
-      <button id="day-next" class="icon-btn" aria-label="Jour suivant" title="Jour suivant (→)">
+      <button id="day-label" class="day-label" data-i18n-title="day.backToday"></button>
+      <button id="day-next" class="icon-btn" data-i18n-title="day.next" data-i18n-aria="day.next">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
       </button>
     </div>
     <div class="search">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="search" type="search" placeholder="Équipe…" aria-label="Rechercher une équipe" />
+      <input id="search" type="search" data-i18n-placeholder="ui.search" data-i18n-aria="ui.searchAria" />
     </div>
-    <button id="live-only" class="chip" aria-pressed="false" title="Matchs en direct uniquement">
-      <span class="chip-dot"></span>Direct
+    <button id="live-only" class="chip" aria-pressed="false" data-i18n-title="ui.liveTitle">
+      <span class="chip-dot"></span><span data-i18n="ui.live">Direct</span>
     </button>
   </div>
 
   <main id="content" aria-live="polite"></main>
 
-  <!-- Classement (panneau superposé) -->
+  <footer class="popup-foot">
+    <button id="open-page" class="open-page" data-i18n-title="ui.openPageTitle">
+      <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5"/></svg>
+      <span data-i18n="ui.openPage">Ouvrir la page web</span>
+      <svg class="arrow" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M8 7h9v9"/></svg>
+    </button>
+  </footer>
+
+  <!-- Standings (overlay panel) -->
   <section id="standings" class="panel" hidden>
     <div class="panel-head">
-      <button id="standings-back" class="icon-btn" aria-label="Retour">
+      <button id="standings-back" class="icon-btn" data-i18n-aria="ui.back">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
       </button>
-      <h2 id="standings-title">Classement</h2>
+      <h2 id="standings-title"></h2>
     </div>
     <div id="standings-body" class="panel-body"></div>
   </section>
 
-  <!-- Réglages -->
+  <!-- Settings (overlay panel) -->
   <section id="settings" class="panel" hidden>
     <div class="panel-head">
-      <button id="settings-close" class="icon-btn" aria-label="Retour">
+      <button id="settings-close" class="icon-btn" data-i18n-aria="ui.back">
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
       </button>
-      <h2>Réglages</h2>
+      <h2 data-i18n="ui.settings">Réglages</h2>
     </div>
     <div class="panel-body settings-body">
-      <h3>Mode</h3>
-      <div class="seg" id="set-theme" role="radiogroup">
-        <button data-theme-val="auto" role="radio">Auto</button>
-        <button data-theme-val="light" role="radio">Jour</button>
-        <button data-theme-val="dark" role="radio">Nuit</button>
+      <h3 data-i18n="set.language">Langue</h3>
+      <div class="seg" id="set-lang" role="radiogroup">
+        <button data-lang="auto" role="radio" data-i18n="set.lang.auto">Auto</button>
+        <button data-lang="fr" role="radio" class="flag-opt"><svg class="flag" viewBox="0 0 3 2" aria-hidden="true"><rect width="1" height="2" fill="#0055A4"/><rect x="1" width="1" height="2" fill="#fff"/><rect x="2" width="1" height="2" fill="#EF4135"/></svg>Français</button>
+        <button data-lang="en" role="radio" class="flag-opt"><svg class="flag" viewBox="0 0 60 30" aria-hidden="true"><clipPath id="sl-a"><path d="M0 0v30h60V0z"/></clipPath><clipPath id="sl-b"><path d="M30 15h30v15zv15H0zH0V0zV0h30z"/></clipPath><g clip-path="url(#sl-a)"><path d="M0 0v30h60V0z" fill="#012169"/><path d="M0 0l60 30m0-30L0 30" stroke="#fff" stroke-width="6"/><path d="M0 0l60 30m0-30L0 30" clip-path="url(#sl-b)" stroke="#C8102E" stroke-width="4"/><path d="M30 0v30M0 15h60" stroke="#fff" stroke-width="10"/><path d="M30 0v30M0 15h60" stroke="#C8102E" stroke-width="6"/></g></svg>English</button>
       </div>
-      <p class="hint" id="mode-hint" hidden>Le thème personnalisé fixe lui-même ses couleurs de jour ou de nuit.</p>
 
-      <h3>Thème</h3>
+      <h3 data-i18n="set.mode">Mode</h3>
+      <div class="seg" id="set-theme" role="radiogroup">
+        <button data-theme-val="auto" role="radio" data-i18n="set.auto">Auto</button>
+        <button data-theme-val="light" role="radio" data-i18n="set.light">Jour</button>
+        <button data-theme-val="dark" role="radio" data-i18n="set.dark">Nuit</button>
+      </div>
+      <p class="hint" id="mode-hint" data-i18n="set.modeHint" hidden></p>
+
+      <h3 data-i18n="set.theme">Thème</h3>
       <div id="set-palettes" class="swatches"></div>
 
       <div id="custom-editor" class="custom-editor" hidden>
         <div class="ce-presets" id="custom-presets"></div>
         <div class="ce-grid">
-          <label class="color-field"><input type="color" data-color="bg" /><span>Fond</span><code></code></label>
-          <label class="color-field"><input type="color" data-color="surface" /><span>Cartes</span><code></code></label>
-          <label class="color-field"><input type="color" data-color="text" /><span>Texte</span><code></code></label>
-          <label class="color-field"><input type="color" data-color="accent" /><span>Accent</span><code></code></label>
-          <label class="color-field"><input type="color" data-color="live" /><span>Direct</span><code></code></label>
+          <label class="color-field"><input type="color" data-color="bg" /><span data-i18n="set.c.bg">Fond</span><code></code></label>
+          <label class="color-field"><input type="color" data-color="surface" /><span data-i18n="set.c.surface">Cartes</span><code></code></label>
+          <label class="color-field"><input type="color" data-color="text" /><span data-i18n="set.c.text">Texte</span><code></code></label>
+          <label class="color-field"><input type="color" data-color="accent" /><span data-i18n="set.c.accent">Accent</span><code></code></label>
+          <label class="color-field"><input type="color" data-color="live" /><span data-i18n="set.c.live">Direct</span><code></code></label>
         </div>
         <div class="ce-share">
-          <button id="theme-export" class="pill-btn">Copier le code du thème</button>
-          <button id="theme-import" class="pill-btn">Importer</button>
+          <button id="theme-export" class="pill-btn" data-i18n="set.export">Copier le code du thème</button>
+          <button id="theme-import" class="pill-btn" data-i18n="set.import">Importer</button>
         </div>
-        <input id="theme-import-input" type="text" placeholder="Collez un code de thème puis Entrée" hidden />
+        <input id="theme-import-input" type="text" data-i18n-placeholder="set.importPh" hidden />
       </div>
 
-      <h3>Police</h3>
+      <h3 data-i18n="set.font">Police</h3>
       <div class="seg five" id="set-font" role="radiogroup">
         <button data-font="system" role="radio" style="font-family:system-ui">Aa</button>
         <button data-font="rounded" role="radio" style="font-family:ui-rounded,'SF Pro Rounded','Nunito',system-ui">Aa</button>
@@ -106,42 +122,42 @@
         <button data-font="condensed" role="radio" style="font-family:'Barlow Condensed','Roboto Condensed','Arial Narrow',sans-serif">Aa</button>
       </div>
 
-      <h3>Taille du texte</h3>
+      <h3 data-i18n="set.size">Taille du texte</h3>
       <div class="seg" id="set-size" role="radiogroup">
-        <button data-size="compact" role="radio">Compacte</button>
-        <button data-size="normal" role="radio">Normale</button>
-        <button data-size="large" role="radio">Grande</button>
+        <button data-size="compact" role="radio" data-i18n="set.compact">Compacte</button>
+        <button data-size="normal" role="radio" data-i18n="set.normal">Normale</button>
+        <button data-size="large" role="radio" data-i18n="set.large">Grande</button>
       </div>
 
-      <h3>Arrondi des coins <span id="radius-val" class="val"></span></h3>
+      <h3><span data-i18n="set.radius">Arrondi des coins</span> <span id="radius-val" class="val"></span></h3>
       <input id="set-radius" type="range" min="0" max="22" step="1" />
 
-      <h3>Équipes favorites</h3>
-      <p class="hint">Séparées par des virgules. Mises en avant, et notifiées à chaque but.</p>
-      <input id="set-fav" type="text" placeholder="PSG, Metz, Real Madrid" />
+      <h3 data-i18n="set.favs">Équipes favorites</h3>
+      <p class="hint" data-i18n="set.favsHint"></p>
+      <input id="set-fav" type="text" data-i18n-placeholder="set.favsPh" />
 
-      <h3>Notifications de but</h3>
+      <h3 data-i18n="set.notify">Notifications de but</h3>
       <div class="seg" id="set-notify" role="radiogroup">
-        <button data-notify="fav" role="radio">Favoris</button>
-        <button data-notify="all" role="radio">Tous</button>
-        <button data-notify="off" role="radio">Aucune</button>
+        <button data-notify="fav" role="radio" data-i18n="set.notify.fav">Favoris</button>
+        <button data-notify="all" role="radio" data-i18n="set.notify.all">Tous</button>
+        <button data-notify="off" role="radio" data-i18n="set.notify.off">Aucune</button>
       </div>
 
-      <h3>Football</h3>
+      <h3 data-i18n="set.foot">Football</h3>
       <div id="set-foot" class="checks"></div>
 
-      <h3>GT3</h3>
+      <h3 data-i18n="set.gt">GT3</h3>
       <div id="set-gt" class="checks one"></div>
-      <p class="hint">Ajouter un championnat via son identifiant TheSportsDB :</p>
+      <p class="hint" data-i18n="set.gtHint"></p>
       <div class="row-input">
-        <input id="set-gt-id" type="text" inputmode="numeric" placeholder="ex. 4439" />
-        <button id="set-gt-add" class="btn">Ajouter</button>
+        <input id="set-gt-id" type="text" inputmode="numeric" data-i18n-placeholder="set.gtPh" />
+        <button id="set-gt-add" class="btn" data-i18n="set.add">Ajouter</button>
       </div>
 
-      <h3>Icône</h3>
-      <label class="check"><input type="checkbox" id="set-badge" /> Afficher le nombre d'événements en direct</label>
+      <h3 data-i18n="set.icon">Icône</h3>
+      <label class="check"><input type="checkbox" id="set-badge" /> <span data-i18n="set.badge"></span></label>
 
-      <p class="hint keys">Raccourcis : <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> onglets · <kbd>←</kbd> <kbd>→</kbd> jours · <kbd>/</kbd> recherche · <kbd>R</kbd> actualiser · <kbd>T</kbd> thème</p>
+      <p class="hint keys" data-i18n-html="set.keys"></p>
     </div>
   </section>
 

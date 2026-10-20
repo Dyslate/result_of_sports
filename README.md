@@ -1,99 +1,122 @@
-# Scores du jour
+# Today's Scores (Scores du jour)
 
-Extension Chrome qui affiche les résultats du jour en un clic sur son icône : football en direct, Formule 1 et GT3. Tout tourne en local dans le popup de l'extension ; aucun serveur, aucun compte.
+A Chrome extension that shows today's results in one click: live football, Formula 1 and GT3. Click the toolbar icon for a compact popup, or hit **Open web page** for a full-screen dashboard with inline video highlights. Everything runs locally inside the extension: no server, no account.
+
+Available in **English** and **French** (follows Chrome's language, or switch with the flag).
 
 <p align="center">
-  <img src="docs/foot-light.png" width="260" alt="Football, thème jour">
-  <img src="docs/foot-dark.png" width="260" alt="Football, thème nuit">
-  <img src="docs/f1-dark.png" width="260" alt="Formule 1">
+  <img src="docs/popup-fr.png" width="250" alt="Popup, French, light theme">
+  <img src="docs/popup-en-dark.png" width="250" alt="Popup, English, dark theme">
+  <img src="docs/popup-settings.png" width="250" alt="Settings">
 </p>
+
 <p align="center">
-  <img src="docs/standings.png" width="260" alt="Classement">
-  <img src="docs/gt-light.png" width="260" alt="GT3">
-  <img src="docs/custom.png" width="260" alt="Éditeur de thème">
+  <img src="docs/page-dark.png" width="820" alt="Full-screen dashboard, dark theme">
 </p>
 
-<sub>Captures réalisées avec des données de démonstration.</sub>
+<p align="center">
+  <img src="docs/page-video.png" width="405" alt="Inline video highlights">
+  <img src="docs/page-standings.png" width="405" alt="League table">
+</p>
 
-## Fonctionnalités
+<sub>Screenshots taken with demo data.</sub>
+
+## Features
 
 **Football**
-- Scores en direct, terminés et à venir pour Ligue 1, Ligue 2, Coupe de France, Ligue des champions, Ligue Europa, Ligue Conférence, Premier League, LaLiga, Serie A, Bundesliga (et d'autres à activer)
-- Minute de jeu, mi-temps, prolongations, tirs au but
-- Détail d'un match au clic : buteurs, penalties, cartons rouges, stade
-- Navigation par jour (hier, demain…), recherche d'équipe, filtre « Direct »
-- Classement de chaque compétition, avec zones de qualification et de relégation
-- Équipes favorites mises en avant (★), à suivre d'un clic depuis un match
+- Live, finished and upcoming matches for Ligue 1, Ligue 2, Coupe de France, Champions League, Europa League, Conference League, Premier League, LaLiga, Serie A, Bundesliga (more can be enabled)
+- Match minute, half-time, extra time, penalty shoot-outs
+- Click a match for scorers, penalties, red cards and venue
+- Browse other days, search for a team, "Live only" filter
+- League tables with qualification and relegation zones
+- Favourite teams are highlighted (★) and can be followed from any match
 
-**Formule 1**
-- Week-end en cours ou dernier Grand Prix, avec toutes les séances
-- Classement de chaque séance (essais, qualifs, sprint, course), en direct pendant la séance
-- Prochain Grand Prix avec compte à rebours
-- Championnat pilotes
+**Formula 1**
+- Current (or last) Grand Prix weekend with every session
+- Classification for each session (practice, qualifying, sprint, race), live during the session
+- Next Grand Prix with a countdown
+- Drivers' championship
 
 **GT3**
-- Course du jour, dernière et prochaine épreuve (GT World Challenge Europe, British GT, ou n'importe quel championnat TheSportsDB via son identifiant)
+- Race of the day, last and next event (GT World Challenge Europe, British GT, or any TheSportsDB championship by ID)
 
-**Partout**
-- Bouton **Résumé / Best-of** qui ouvre les vidéos YouTube du match, de la séance ou de la course
-- Bouton **Agenda** pour ajouter un match ou un Grand Prix à Google Agenda
-- **Notifications** de coup d'envoi, de but et de fin de match pour vos favoris (ou tous les matchs)
-- **Badge** sur l'icône avec le nombre d'événements en direct
-- Actualisation automatique toutes les 30 s quand il y a du direct
+**Full-screen page** ("Open web page" button, or <kbd>W</kbd> in the popup)
+- Football, F1 and GT3 side by side, with live / today / F1 / GT3 summary tiles
+- **Inline highlights**: the Highlights button plays the first YouTube result for the match right in the page, with the next results as alternatives
+- League tables in a dialog, responsive down to phone width
+- Stays in sync with the popup settings (theme, language, competitions, favourites)
 
-## Thèmes
+**Everywhere**
+- Highlights button for every finished match, F1 session and GT3 race
+- Add a match or a Grand Prix to Google Calendar
+- **Notifications** for kick-off, goals and full time (favourites only, all matches, or off)
+- **Badge** on the toolbar icon with the number of live events
+- Auto-refresh every 30 s while something is live
 
-- Mode **Auto / Jour / Nuit**
-- 8 palettes : Pelouse, Océan, Crépuscule, Néon, Paddock, Minuit, Sable, Graphite
-- **Thème personnalisé** : couleurs du fond, des cartes, du texte, de l'accent et du direct ; police (5 styles), taille du texte, arrondi des coins
-- Partage de thème : « Copier le code du thème » puis « Importer » sur un autre navigateur
+## Themes
 
-## Raccourcis clavier
+- **Auto / Light / Dark** mode
+- 8 palettes: Pitch, Ocean, Sunset, Neon, Paddock, Midnight, Sand, Graphite
+- **Custom theme**: background, card, text, accent and live colours; font (5 styles), text size, corner radius
+- Share a theme: "Copy theme code", then "Import" on another browser
 
-| Touche | Action |
-|---|---|
-| `1` `2` `3` | Onglets Foot / F1 / GT3 |
-| `←` `→` | Jour précédent / suivant |
-| `/` | Rechercher une équipe |
-| `R` | Actualiser |
-| `T` | Changer de mode jour/nuit |
-| `Échap` | Fermer un panneau |
+## Keyboard shortcuts
+
+| Key | Popup | Page |
+|---|---|---|
+| `1` `2` `3` | Football / F1 / GT3 tab | — |
+| `←` `→` | Previous / next day | Previous / next day |
+| `/` | Search for a team | Search for a team |
+| `R` | Refresh | Refresh |
+| `T` | Cycle light / dark mode | Cycle light / dark mode |
+| `L` | Switch language | Switch language |
+| `W` | Open the web page | — |
+| `Esc` | Close a panel | Close a dialog |
 
 ## Installation
 
-1. Téléchargez le dépôt (bouton **Code → Download ZIP**) et décompressez-le, ou clonez-le :
+1. Download the repository (**Code → Download ZIP**) and unzip it, or clone it:
    ```
    git clone https://github.com/Dyslate/result_of_sports.git
    ```
-2. Ouvrez `chrome://extensions` dans Chrome.
-3. Activez le **Mode développeur** (en haut à droite).
-4. Cliquez sur **Charger l'extension non empaquetée** et choisissez le dossier `result_of_sports`.
-5. Épinglez l'extension (icône puzzle → punaise) puis cliquez dessus.
+2. Open `chrome://extensions` in Chrome.
+3. Turn on **Developer mode** (top right).
+4. Click **Load unpacked** and select the `result_of_sports` folder.
+5. Pin the extension (puzzle icon → pin) and click it.
 
-Chrome 123 ou plus récent est nécessaire.
+Requires Chrome 123 or later.
 
-## Sources de données
+## Data sources
 
-| Sport | Source | Contenu |
+| Sport | Source | Content |
 |---|---|---|
-| Football | API publique ESPN (`site.api.espn.com`) | scores, buteurs, classements |
-| Formule 1 | API publique ESPN | séances, classements, championnat |
-| GT3 | [TheSportsDB](https://www.thesportsdb.com) (clé gratuite) | calendrier |
+| Football | ESPN public API (`site.api.espn.com`) | scores, scorers, tables |
+| Formula 1 | ESPN public API | sessions, classifications, championship |
+| GT3 | [TheSportsDB](https://www.thesportsdb.com) (free key) | calendar |
+| Highlights | YouTube search results page | first videos for a search |
 
-Ces API ne demandent pas de clé, mais elles ne sont pas officiellement documentées et peuvent évoluer. Aucune source gratuite ne publie les classements de course GT3 en direct ; l'onglet GT3 se limite donc au calendrier.
+None of these require an API key, but they are not officially documented and may change. No free source publishes live GT3 race results, so the GT3 section is limited to the calendar.
 
-## Structure
+Inline highlights rely on YouTube embeds: some broadcasters disable embedding on their videos, in which case the player shows a message and the **Watch on YouTube** button opens the video directly. If you have never accepted YouTube's cookie banner in Chrome, the search may be blocked by the consent page; open youtube.com once to accept it.
+
+## Project structure
 
 ```
-manifest.json      Manifest V3
-popup.html/.css/.js  Interface du popup
-theme-init.js      Application du thème avant le premier rendu
-background.js      Service worker : badge et notifications
-src/api.js         Appels aux API et normalisation des données
-src/config.js      Compétitions, palettes et réglages par défaut
-icons/             Icônes de l'extension
+manifest.json          Manifest V3 (name and description localised via _locales/)
+popup.html / popup.js  Toolbar popup
+page.html / page.js    Full-screen dashboard
+page.css               Dashboard layout
+app.css                Shared theme and components
+theme-init.js          Applies the theme before first paint
+background.js          Service worker: badge and notifications
+src/api.js             API calls and data normalisation
+src/render.js          Shared HTML rendering (popup + page)
+src/i18n.js            English / French strings
+src/config.js          Competitions, palettes and default settings
+icons/                 Extension icons
+docs/                  README screenshots
 ```
 
-## Licence
+## License
 
 MIT

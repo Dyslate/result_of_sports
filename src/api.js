@@ -1,4 +1,4 @@
-// Récupération et normalisation des données (ESPN pour foot/F1, TheSportsDB pour GT3).
+// Data fetching and normalisation (ESPN for football/F1, TheSportsDB for GT3).
 
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports';
 const TSDB = 'https://www.thesportsdb.com/api/v1/json/123';
@@ -33,28 +33,29 @@ function footStatus(status) {
   const t = status?.type ?? {};
   const name = t.name ?? '';
   const state = t.state ?? 'pre';
-  let label = '';
+  // `code` is translated by the UI (see i18n.js, keys "st.*"); `clock` is the match minute.
+  let code = '';
+  let clock = '';
   if (state === 'pre') {
-    if (name === 'STATUS_POSTPONED') label = 'Reporté';
-    else if (name === 'STATUS_CANCELED') label = 'Annulé';
-    else if (name === 'STATUS_DELAYED') label = 'Retardé';
+    if (name === 'STATUS_POSTPONED') code = 'postponed';
+    else if (name === 'STATUS_CANCELED') code = 'canceled';
+    else if (name === 'STATUS_DELAYED') code = 'delayed';
   } else if (state === 'in') {
-    if (name === 'STATUS_HALFTIME') label = 'Mi\u2011temps';
-    else if (name === 'STATUS_SHOOTOUT') label = 'T.a.b.';
-    else if (name === 'STATUS_END_OF_REGULATION') label = 'Fin 90\'';
-    else if (name === 'STATUS_END_OF_EXTRATIME') label = 'Fin prol.';
-    else label = status?.displayClock && status.displayClock !== "0'" ? status.displayClock : 'En cours';
+    if (name === 'STATUS_HALFTIME') code = 'ht';
+    else if (name === 'STATUS_SHOOTOUT') code = 'pens';
+    else if (name === 'STATUS_END_OF_REGULATION') code = 'end90';
+    else if (name === 'STATUS_END_OF_EXTRATIME') code = 'endet';
+    else if (status?.displayClock && status.displayClock !== "0'") clock = status.displayClock;
+    else code = 'live';
   } else {
-    if (name === 'STATUS_FINAL_AET') label = 'Terminé a.p.';
-    else if (name === 'STATUS_FINAL_PEN') label = 'Terminé t.a.b.';
-    else if (name === 'STATUS_ABANDONED') label = 'Arrêté';
-    else if (name === 'STATUS_POSTPONED') label = 'Reporté';
-    else if (name === 'STATUS_CANCELED') label = 'Annulé';
-    else label = 'Terminé';
+    if (name === 'STATUS_FINAL_AET') code = 'aet';
+    else if (name === 'STATUS_FINAL_PEN') code = 'pen';
+    else if (name === 'STATUS_ABANDONED') code = 'abandoned';
+    else if (name === 'STATUS_POSTPONED') code = 'postponed';
+    else if (name === 'STATUS_CANCELED') code = 'canceled';
+    else code = 'ft';
   }
-  // Un match reporté / annulé ne doit pas compter comme "en direct".
-  const live = state === 'in';
-  return { state, live, label, name };
+  return { state, live: state === 'in', code, clock, name };
 }
 
 function footSide(c) {
@@ -110,7 +111,7 @@ function normalizeFootEvent(ev) {
   };
 }
 
-/** Matchs d'une date pour une liste de compétitions. */
+/** Matches on a given date for a list of competitions. */
 export async function fetchFootball(date, leagueIds) {
   const day = ymd(date);
   const results = await Promise.allSettled(
@@ -140,18 +141,6 @@ export async function fetchFootball(date, leagueIds) {
 
 /* ---------------------------------------------------------------- F1 */
 
-const SESSION_NAMES = {
-  FP1: 'Essais libres 1',
-  FP2: 'Essais libres 2',
-  FP3: 'Essais libres 3',
-  Qual: 'Qualifications',
-  SS: 'Qualif. sprint',
-  SQ: 'Qualif. sprint',
-  Sprint: 'Sprint',
-  SR: 'Sprint',
-  Race: 'Course',
-};
-
 function f1Session(c) {
   const abbr = c.type?.abbreviation ?? c.type?.text ?? '';
   const st = c.status?.type ?? {};
@@ -168,7 +157,6 @@ function f1Session(c) {
   return {
     id: c.id,
     abbr,
-    name: SESSION_NAMES[abbr] ?? abbr,
     date: c.date,
     state: st.state ?? 'pre',
     completed: !!st.completed,
@@ -193,7 +181,7 @@ function eventIdFromRef(ref) {
   return m ? m[1] : null;
 }
 
-/** Week-end en cours (ou dernier GP) + prochain GP. */
+/** Current weekend (or last GP) + next GP. */
 export async function fetchF1(now = new Date()) {
   const base = await getJSON(`${ESPN}/racing/f1/scoreboard`);
   const calendar = (base.leagues?.[0]?.calendar ?? []).map((c) => ({
@@ -204,7 +192,7 @@ export async function fetchF1(now = new Date()) {
   }));
   let current = base.events?.[0] ? normalizeF1Event(base.events[0]) : null;
 
-  // Si un GP se déroule aujourd'hui (± 1 jour) et que ce n'est pas celui renvoyé, on le charge.
+  // If a GP is running today (± 1 day) and it isn't the one returned, load it explicitly.
   const DAY = 86400000;
   const live = calendar.find(
     (c) => new Date(c.start).getTime() - DAY <= now.getTime() && now.getTime() <= new Date(c.end).getTime() + DAY
@@ -215,7 +203,7 @@ export async function fetchF1(now = new Date()) {
       const ev = (d.events ?? []).find((e) => !live.id || e.id === live.id) ?? d.events?.[0];
       if (ev) current = normalizeF1Event(ev);
     } catch {
-      /* on garde le précédent */
+      /* keep the previous one */
     }
   }
 
@@ -224,7 +212,7 @@ export async function fetchF1(now = new Date()) {
   return { current, next, round, total: calendar.length };
 }
 
-/* ---------------------------------------------------------------- Classements */
+/* ---------------------------------------------------------------- Standings */
 
 const ESPN_V2 = 'https://site.api.espn.com/apis/v2/sports';
 
@@ -242,7 +230,7 @@ function collectGroups(node, out = []) {
   return out;
 }
 
-/** Classement d'une compétition de foot (gère les groupes). */
+/** Football table for a competition (handles groups). */
 export async function fetchStandings(leagueId) {
   const data = await getJSON(`${ESPN_V2}/soccer/${leagueId}/standings`);
   const groups = collectGroups(data).map((g) => ({
@@ -267,7 +255,7 @@ export async function fetchStandings(leagueId) {
   return { name: data.name ?? '', groups };
 }
 
-/** Championnat F1 : pilotes (et constructeurs si fournis). */
+/** F1 championship: drivers (and constructors when provided). */
 export async function fetchF1Standings() {
   const data = await getJSON(`${ESPN_V2}/racing/f1/standings`);
   return (data.children ?? []).map((c) => ({
@@ -283,6 +271,49 @@ export async function fetchF1Standings() {
   }));
 }
 
+/* ---------------------------------------------------------------- YouTube */
+
+function collectVideos(node, out, max) {
+  if (!node || typeof node !== 'object' || out.length >= max) return;
+  if (Array.isArray(node)) {
+    for (const n of node) collectVideos(n, out, max);
+    return;
+  }
+  const v = node.videoRenderer;
+  if (v?.videoId) {
+    out.push({
+      id: v.videoId,
+      title: v.title?.runs?.map((r) => r.text).join('') ?? v.title?.simpleText ?? '',
+      channel: v.ownerText?.runs?.[0]?.text ?? v.longBylineText?.runs?.[0]?.text ?? '',
+      length: v.lengthText?.simpleText ?? '',
+      published: v.publishedTimeText?.simpleText ?? '',
+      views: v.shortViewCountText?.simpleText ?? v.viewCountText?.simpleText ?? '',
+      thumb: `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`,
+    });
+    return;
+  }
+  for (const k of Object.keys(node)) collectVideos(node[k], out, max);
+}
+
+/**
+ * First videos of a YouTube search (no API key: parses ytInitialData from the results page).
+ * Uses the user's YouTube cookies so the EU consent wall doesn't block the request.
+ */
+export async function searchYouTube(query, { max = 5, hl = 'fr' } = {}) {
+  const url = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&hl=${hl}`;
+  const res = await fetch(url, { credentials: 'include' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const html = await res.text();
+  const start = html.indexOf('ytInitialData = ');
+  if (start < 0) throw new Error('no ytInitialData (consent page?)');
+  const from = start + 'ytInitialData = '.length;
+  const end = html.indexOf(';</script>', from);
+  const data = JSON.parse(html.slice(from, end));
+  const out = [];
+  collectVideos(data?.contents ?? data, out, max);
+  return out;
+}
+
 /* ---------------------------------------------------------------- GT3 */
 
 function gtEvent(e) {
@@ -290,7 +321,7 @@ function gtEvent(e) {
   return {
     id: e.idEvent,
     name: e.strEvent,
-    date: e.dateEvent, // AAAA-MM-JJ
+    date: e.dateEvent, // YYYY-MM-DD
     time: e.strTime && e.strTime !== '00:00:00' ? e.strTimestamp : null,
     venue: e.strVenue ?? '',
     country: e.strCountry ?? '',
@@ -300,7 +331,7 @@ function gtEvent(e) {
   };
 }
 
-/** Dernière et prochaine épreuve de chaque championnat GT. */
+/** Last and next event of each GT championship. */
 export async function fetchGT(leagues) {
   const out = await Promise.all(
     leagues.map(async (lg) => {

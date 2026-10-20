@@ -1,4 +1,4 @@
-// Applique le thème avant le premier rendu (évite le flash) et expose applyThemeCfg().
+// Applies the theme before first paint (avoids a light/dark flash) and exposes applyThemeCfg().
 (function () {
   const SIZES = { compact: '12px', normal: '13px', large: '14.5px' };
   const CUSTOM_VARS = ['--bg', '--surface', '--text', '--accent', '--live', '--accent-ink'];
@@ -28,7 +28,7 @@
       r.style.setProperty('--accent', c.accent);
       r.style.setProperty('--live', c.live);
       r.style.setProperty('--accent-ink', luminance(c.accent) > 0.45 ? '#111111' : '#ffffff');
-      // Le mode (clair/sombre) découle de la couleur de fond choisie.
+      // Light/dark mode follows the chosen background colour.
       r.dataset.theme = luminance(c.bg) < 0.35 ? 'dark' : 'light';
     } else if (cfg.mode === 'light' || cfg.mode === 'dark') {
       r.dataset.theme = cfg.mode;
@@ -42,7 +42,7 @@
     try {
       localStorage.setItem('themeCfg', JSON.stringify(cfg));
     } catch {
-      /* stockage indisponible */
+      /* storage unavailable */
     }
   }
 
@@ -51,6 +51,6 @@
     const saved = JSON.parse(localStorage.getItem('themeCfg') || 'null');
     if (saved) applyThemeCfg(saved);
   } catch {
-    /* rien à appliquer */
+    /* nothing saved yet */
   }
 })();

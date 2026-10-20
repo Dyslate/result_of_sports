@@ -1,0 +1,441 @@
+// Full-screen dashboard opened from the popup ("Open web page").
+// Shows football, F1 and GT3 side by side, with standings and inline YouTube highlights.
+import { fetchFootball, fetchF1, fetchGT, fetchStandings, fetchF1Standings, searchYouTube } from './src/api.js';
+import { FOOT_LEAGUES, GT_LEAGUES, loadSettings, saveSettings, isFavTeam } from './src/config.js';
+import { t, setLang, lang, localName, applyI18n } from './src/i18n.js';
+import {
+  esc, norm, img, fmtTime, fmtDay, relDays, dayFromOffset, dayLabel, dayPhrase, emptyBox, skeleton, flag,
+  THEME_ICONS, sessionName, defaultSession, leagueCard, standingsHtml, f1GpCard, f1NextCard, f1StandingsCard, gtCard,
+} from './src/render.js';
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => [...document.querySelectorAll(s)];
+
+const state = {
+  settings: null,
+  dayOffset: 0,
+  liveOnly: false,
+  query: '',
+  foot: null,
+  f1: null,
+  f1Stand: null,
+  gt: null,
+  f1Session: null,
+  f1ShowAll: true,
+  f1StandShowAll: false,
+  scores: new Map(),
+  flashIds: new Set(),
+  timer: null,
+  loading: false,
+};
+
+const isFav = (team) => isFavTeam(team, state.settings.favorites);
+
+async function persist(patch) {
+  Object.assign(state.settings, patch);
+  await saveSettings(patch);
+}
+
+/* ================================================================ chrome: language & theme */
+
+function applyLanguage() {
+  setLang(state.settings.lang);
+  applyI18n();
+  $$('.lang-seg [data-lang]').forEach((b) => {
+    b.innerHTML = flag(b.dataset.lang) + `<span>${b.dataset.lang.toUpperCase()}</span>`;
+    b.setAttribute('aria-checked', String(b.dataset.lang === lang()));
+  });
+  const today = new Intl.DateTimeFormat(lang() === 'fr' ? 'fr-FR' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(new Date());
+  $('#today-long').textContent = today.charAt(0).toUpperCase() + today.slice(1);
+  applyTheme();
+}
+
+function applyTheme() {
+  const cfg = state.settings.themeCfg;
+  window.applyThemeCfg?.(cfg);
+  const custom = cfg.palette === 'custom';
+  $('#theme-btn').innerHTML = custom ? THEME_ICONS.custom : THEME_ICONS[cfg.mode] ?? THEME_ICONS.auto;
+  $('#theme-btn').title = custom ? t('theme.customTitle') : t('theme.modeTitle', { m: t(`theme.mode.${cfg.mode}`) });
+}
+
+function cycleTheme() {
+  const cfg = { ...state.settings.themeCfg };
+  if (cfg.palette === 'custom') cfg.palette = cfg.lastPreset || 'pelouse';
+  else cfg.mode = ['auto', 'light', 'dark'][(['auto', 'light', 'dark'].indexOf(cfg.mode) + 1) % 3];
+  persist({ themeCfg: cfg });
+  applyTheme();
+}
+
+function setLanguage(l) {
+  if (l === lang()) return;
+  persist({ lang: l });
+  applyLanguage();
+  paintAll();
+}
+
+/* ================================================================ painting */
+
+function paintKpis() {
+  const foot = state.foot?.leagues ?? [];
+  const liveFoot = foot.reduce((n, lg) => n + lg.events.filter((e) => e.status.live).length, 0);
+  const total = foot.reduce((n, lg) => n + lg.events.length, 0);
+
+  // F1 tile: live session, else next session of the weekend, else next GP.
+  let f1Main = '—';
+  let f1Sub = t('page.f1None');
+  let f1Live = false;
+  const gp = state.f1?.current;
+  if (gp) {
+    const live = gp.sessions.find((s) => s.state === 'in');
+    const upcoming = gp.sessions.find((s) => s.state === 'pre');
+    if (live) {
+      f1Live = true;
+      f1Main = sessionName(live.abbr);
+      f1Sub = t('page.f1Live', { s: gp.name });
+    } else if (upcoming) {
+      f1Main = sessionName(upcoming.abbr);
+      f1Sub = `${fmtDay(upcoming.date, { weekday: 'long' })} · ${fmtTime(upcoming.date)}`;
+    }
+  }
+  if (!f1Live && !gp?.sessions.some((s) => s.state === 'pre') && state.f1?.next) {
+    f1Main = relDays(state.f1.next.start);
+    f1Sub = state.f1.next.name;
+  }
+
+  // GT tile.
+  const gtCards = (state.gt ?? []).map(gtCard);
+  const gtToday = gtCards.filter((c) => c.today).length;
+  const nextGt = (state.gt ?? []).map((c) => c.next).filter(Boolean).sort((a, b) => (a.date > b.date ? 1 : -1))[0];
+  const gtMain = gtToday ? String(gtToday) : nextGt ? relDays(nextGt.date + 'T12:00:00') : '—';
+  const gtSub = gtToday ? t('page.gtToday', { n: gtToday }) : nextGt ? nextGt.name : t('page.gtNone');
+
+  const tile = (cls, label, main, sub) =>
+    `<div class="kpi ${cls}"><span class="kpi-label">${esc(label)}</span><strong class="kpi-main">${esc(main)}</strong><span class="kpi-sub">${esc(sub)}</span></div>`;
+  $('#kpis').innerHTML = [
+    tile(liveFoot + (f1Live ? 1 : 0) ? 'is-live' : '', t('page.liveNow'), String(liveFoot + (f1Live ? 1 : 0)), t('page.liveSub')),
+    tile('', state.dayOffset ? t('page.matchesOn', { day: dayLabel(state.dayOffset) }) : t('page.matches'), String(total), t('page.matchesSub', { n: foot.length })),
+    tile(f1Live ? 'is-live' : 'f1', t('page.f1'), f1Main, f1Sub),
+    tile('gt', t('page.gt'), gtMain, gtSub),
+  ].join('');
+}
+
+function paintFoot() {
+  const box = $('#foot');
+  $('#day-label').textContent = dayLabel(state.dayOffset);
+  if (!state.settings.footLeagues.length) {
+    box.innerHTML = emptyBox('⚙️', t('foot.noComp'), t('page.settingsHint'));
+    return;
+  }
+  const data = state.foot;
+  if (!data) return;
+  if (data.failedAll) {
+    box.innerHTML = emptyBox('📡', t('foot.err'), t('err.sub'));
+    return;
+  }
+  const q = norm(state.query);
+  const order = FOOT_LEAGUES.map((l) => l.id);
+  const favMatch = (e) => isFav(e.home) || isFav(e.away);
+  const lgs = data.leagues
+    .map((lg) => ({
+      ...lg,
+      name: localName(FOOT_LEAGUES.find((l) => l.id === lg.id)) || lg.name,
+      events: lg.events
+        .filter((e) => !state.liveOnly || e.status.live)
+        .filter((e) => !q || norm(`${e.home.name} ${e.home.fullName} ${e.away.name} ${e.away.fullName}`).includes(q))
+        .sort((a, b) => favMatch(b) - favMatch(a)),
+    }))
+    .filter((lg) => lg.events.length)
+    .map((lg) => ({ ...lg, fav: lg.events.some(favMatch) }))
+    .sort((a, b) => b.fav - a.fav || order.indexOf(a.id) - order.indexOf(b.id));
+
+  const total = lgs.reduce((n, lg) => n + lg.events.length, 0);
+  $('#foot-count').textContent = total ? String(total) : '';
+
+  if (!lgs.length) {
+    box.innerHTML = q
+      ? emptyBox('🔎', t('foot.noResult'), t('foot.noTeam', { q: state.query }))
+      : state.liveOnly
+        ? emptyBox('📺', t('foot.noLive'), t('foot.noLiveSub'))
+        : emptyBox('🗓️', t('foot.noMatch'), t('foot.noMatchSub', { day: dayPhrase(state.dayOffset) }));
+    return;
+  }
+  const open = $$('#foot .match.open').map((m) => m.dataset.id);
+  const opts = { favorites: state.settings.favorites, flashIds: state.flashIds, follow: false };
+  box.innerHTML = lgs.map((lg) => leagueCard(lg, opts)).join('');
+  for (const id of open) $(`#foot .match[data-id="${CSS.escape(id)}"]`)?.classList.add('open');
+}
+
+function paintF1() {
+  const box = $('#f1');
+  if (!state.f1) return;
+  if (state.f1.error) {
+    box.innerHTML = emptyBox('📡', t('f1.err'), t('err.sub'));
+    return;
+  }
+  const { current, next, round, total } = state.f1;
+  let html = '';
+  if (current) {
+    if (!state.f1Session) state.f1Session = defaultSession(current)?.id;
+    html += f1GpCard(current, { selectedId: state.f1Session, showAll: state.f1ShowAll, limit: 10, round, total });
+  }
+  html += f1NextCard(next);
+  if (state.f1Stand) html += f1StandingsCard(state.f1Stand, { showAll: state.f1StandShowAll, limit: 10 });
+  box.innerHTML = html || emptyBox('🏁', t('f1.over'), t('f1.overSub'));
+}
+
+function paintGT() {
+  const box = $('#gt');
+  if (!state.gt) return;
+  if (state.gt.error) {
+    box.innerHTML = emptyBox('📡', t('gt.err'), t('err.sub'));
+    return;
+  }
+  if (!state.gt.length) {
+    box.innerHTML = emptyBox('⚙️', t('gt.noChamp'), t('page.settingsHint'));
+    return;
+  }
+  box.innerHTML = state.gt.map((c) => gtCard(c).html).join('') + `<div class="note">${esc(t('gt.note'))}</div>`;
+}
+
+function paintAll() {
+  paintKpis();
+  paintFoot();
+  paintF1();
+  paintGT();
+  $('#updated').textContent = t('ui.updated', { time: fmtTime(new Date()) });
+}
+
+/* ================================================================ loading */
+
+async function loadFoot() {
+  const offset = state.dayOffset;
+  let data;
+  try {
+    data = await fetchFootball(dayFromOffset(offset), state.settings.footLeagues);
+  } catch {
+    data = { leagues: [], errors: [], failedAll: true };
+  }
+  if (offset !== state.dayOffset) return;
+  // Remember scores to flash the ones that changed since the last refresh.
+  state.flashIds = new Set();
+  for (const lg of data.leagues) {
+    for (const e of lg.events) {
+      const key = `${e.home.score}-${e.away.score}`;
+      const prev = state.scores.get(e.id);
+      if (prev && prev !== key && e.status.live) state.flashIds.add(e.id);
+      state.scores.set(e.id, key);
+    }
+  }
+  state.foot = data;
+}
+
+async function loadMotor() {
+  const s = state.settings;
+  const gtLeagues = [...GT_LEAGUES, ...s.customGt].filter((l) => s.gtLeagues.includes(l.id));
+  const [f1, f1s, gt] = await Promise.allSettled([fetchF1(), fetchF1Standings(), gtLeagues.length ? fetchGT(gtLeagues) : []]);
+  state.f1 = f1.status === 'fulfilled' ? f1.value : { error: true };
+  state.f1Stand = f1s.status === 'fulfilled' ? f1s.value : null;
+  state.gt = gt.status === 'fulfilled' ? gt.value : { error: true };
+}
+
+async function refresh({ silent = false, footOnly = false } = {}) {
+  if (state.loading) return;
+  state.loading = true;
+  $('#refresh').classList.add('spin');
+  if (!silent) {
+    $('#foot').innerHTML = `<div class="skel-col">${skeleton(4)}</div><div class="skel-col">${skeleton(3)}</div>`;
+    if (!footOnly) {
+      $('#f1').innerHTML = skeleton(2);
+      $('#gt').innerHTML = skeleton(1);
+    }
+  }
+  try {
+    await Promise.all([loadFoot(), footOnly ? null : loadMotor()]);
+    paintAll();
+  } finally {
+    state.loading = false;
+    $('#refresh').classList.remove('spin');
+  }
+  const live =
+    (state.foot?.leagues ?? []).some((lg) => lg.events.some((e) => e.status.live)) ||
+    !!state.f1?.current?.sessions.some((s) => s.state === 'in');
+  clearTimeout(state.timer);
+  state.timer = setTimeout(() => refresh({ silent: true }), live ? 30000 : 300000);
+}
+
+/* ================================================================ dialogs */
+
+function openDialog(id) {
+  const d = $(id);
+  if (!d.open) d.showModal();
+}
+
+async function openStandings(id, name) {
+  $('#stand-title').textContent = t('stand.title', { name });
+  $('#stand-body').innerHTML = skeleton(4);
+  openDialog('#dlg-stand');
+  try {
+    $('#stand-body').innerHTML = standingsHtml(await fetchStandings(id), state.settings.favorites);
+  } catch {
+    $('#stand-body').innerHTML = emptyBox('📡', t('stand.err'), t('stand.errSub'));
+  }
+}
+
+function playerHtml(v) {
+  const src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(v.id)}?autoplay=1&rel=0&modestbranding=1`;
+  return `<div class="player"><iframe src="${esc(src)}" title="${esc(v.title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
+}
+
+function videoInfo(v, searchUrl) {
+  const meta = [v.channel, v.views, v.published, v.length].filter(Boolean).join(' · ');
+  return `<div class="vid-info">
+    <div><div class="vid-title">${esc(v.title)}</div><div class="vid-meta">${esc(meta)}</div></div>
+    <div class="vid-actions">
+      <a class="pill-btn yt" href="https://www.youtube.com/watch?v=${esc(encodeURIComponent(v.id))}" target="_blank" rel="noopener">${esc(t('vid.watchOn'))}</a>
+      <a class="pill-btn" href="${esc(searchUrl)}" target="_blank" rel="noopener">${esc(t('vid.search'))}</a>
+    </div>
+  </div>
+  <p class="hint">${esc(t('vid.embedHint'))}</p>`;
+}
+
+async function openVideo(query, label) {
+  const body = $('#video-body');
+  const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`;
+  $('#video-title').textContent = label || t('vid.title');
+  body.innerHTML = `<div class="player loading"><span>${esc(t('vid.loading'))}</span></div>`;
+  openDialog('#dlg-video');
+
+  let videos = [];
+  try {
+    videos = await searchYouTube(query, { max: 5, hl: lang() });
+  } catch {
+    videos = null;
+  }
+  if (!$('#dlg-video').open) return;
+  if (!videos?.length) {
+    body.innerHTML =
+      emptyBox('🎬', videos ? t('vid.none') : t('vid.error'), t('vid.errorSub')) +
+      `<div class="vid-actions center"><a class="pill-btn yt" href="${esc(searchUrl)}" target="_blank" rel="noopener">${esc(t('vid.watchOn'))}</a></div>`;
+    return;
+  }
+
+  const show = (i) => {
+    const v = videos[i];
+    const others = videos
+      .map((o, j) =>
+        j === i
+          ? ''
+          : `<button class="vid-alt" data-vid="${j}">${img(o.thumb, o.title)}<span><b>${esc(o.title)}</b><small>${esc([o.channel, o.length].filter(Boolean).join(' · '))}</small></span></button>`
+      )
+      .join('');
+    body.innerHTML =
+      playerHtml(v) + videoInfo(v, searchUrl) + (others ? `<h3 class="vid-h">${esc(t('vid.others'))}</h3><div class="vid-list">${others}</div>` : '');
+    body.querySelectorAll('[data-vid]').forEach((b) => b.addEventListener('click', () => show(+b.dataset.vid)));
+  };
+  show(0);
+}
+
+/* ================================================================ init */
+
+function shiftDay(n) {
+  state.dayOffset = n === 0 ? 0 : state.dayOffset + n;
+  state.scores.clear();
+  refresh({ footOnly: true });
+}
+
+async function init() {
+  state.settings = await loadSettings();
+  applyLanguage();
+
+  $$('.lang-seg [data-lang]').forEach((b) => b.addEventListener('click', () => setLanguage(b.dataset.lang)));
+  $('#theme-btn').addEventListener('click', cycleTheme);
+  $('#refresh').addEventListener('click', () => refresh());
+  $('#day-prev').addEventListener('click', () => shiftDay(-1));
+  $('#day-next').addEventListener('click', () => shiftDay(1));
+  $('#day-label').addEventListener('click', () => state.dayOffset && shiftDay(0));
+  $('#live-only').addEventListener('click', (e) => {
+    state.liveOnly = !state.liveOnly;
+    e.currentTarget.setAttribute('aria-pressed', String(state.liveOnly));
+    paintFoot();
+  });
+  $('#search').addEventListener('input', (e) => {
+    state.query = e.target.value.trim();
+    paintFoot();
+  });
+
+  // Dialogs: close button, click on the backdrop; stop the video when closing.
+  $$('dialog').forEach((d) => {
+    d.querySelector('.dlg-close').addEventListener('click', () => d.close());
+    d.addEventListener('click', (e) => {
+      if (e.target === d) d.close();
+    });
+  });
+  $('#dlg-video').addEventListener('close', () => {
+    $('#video-body').innerHTML = '';
+  });
+
+  document.addEventListener('click', (e) => {
+    const yt = e.target.closest('[data-yt]');
+    if (yt) {
+      e.preventDefault();
+      const card = yt.closest('.match');
+      const label = card
+        ? [...card.querySelectorAll('.team .nm')].map((n) => n.textContent).join(' – ')
+        : yt.textContent.trim();
+      return openVideo(yt.dataset.yt, label);
+    }
+    const st = e.target.closest('[data-standings]');
+    if (st) return openStandings(st.dataset.standings, st.dataset.name);
+    const sess = e.target.closest('[data-sess]');
+    if (sess) {
+      state.f1Session = sess.dataset.sess;
+      return paintF1();
+    }
+    const tog = e.target.closest('[data-toggle]');
+    if (tog) {
+      state[tog.dataset.toggle] = !state[tog.dataset.toggle];
+      return paintF1();
+    }
+    const row = e.target.closest('.match-main');
+    if (row) {
+      const m = row.closest('.match');
+      row.setAttribute('aria-expanded', String(m.classList.toggle('open')));
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName);
+    if (typing || e.metaKey || e.ctrlKey || e.altKey || $('dialog[open]')) return;
+    const k = e.key.toLowerCase();
+    if (k === 'r') refresh();
+    else if (k === 't') cycleTheme();
+    else if (k === 'l') setLanguage(lang() === 'fr' ? 'en' : 'fr');
+    else if (e.key === 'ArrowLeft') shiftDay(-1);
+    else if (e.key === 'ArrowRight') shiftDay(1);
+    else if (e.key === '/') {
+      e.preventDefault();
+      $('#search').focus();
+    }
+  });
+
+  // Follow settings changed from the popup (theme, language, competitions, favourites).
+  try {
+    chrome.storage.onChanged.addListener(async (changes, area) => {
+      if (area !== 'sync') return;
+      state.settings = await loadSettings();
+      if (changes.themeCfg) applyTheme();
+      if (changes.lang) {
+        applyLanguage();
+        paintAll();
+      }
+      if (changes.footLeagues || changes.gtLeagues || changes.customGt) refresh({ silent: true });
+      else if (changes.favorites) paintFoot();
+    });
+  } catch {
+    /* preview outside the extension */
+  }
+
+  refresh();
+}
+
+init();
